@@ -1,5 +1,5 @@
-resource "aws_vpc" "terraform_udemy" {
-  cidr_block       = "10.0.0.0/16"
+resource "aws_vpc" "ssh_gateway" {
+  cidr_block       = "10.1.0.0/16"
   instance_tenancy = "default"
   enable_dns_hostnames = true
   enable_dns_support = true
@@ -9,46 +9,38 @@ resource "aws_vpc" "terraform_udemy" {
   }
 }
 
-resource "aws_subnet" "terraform_udemy_subnet_1" {
-  vpc_id            = aws_vpc.terraform_udemy.id
+resource "aws_subnet" "ssh_gateway" {
+  vpc_id            = aws_vpc.ssh_gateway.id
   availability_zone = "us-east-1f"
-  cidr_block        = cidrsubnet(aws_vpc.terraform_udemy.cidr_block, 4, 1)
+  cidr_block        = cidrsubnet(aws_vpc.ssh_gateway.cidr_block, 4, 1)
   map_public_ip_on_launch = true
 }
 
-resource "aws_internet_gateway" "terraform_udemy_gateway" {
-  vpc_id            = aws_vpc.terraform_udemy.id
+resource "aws_internet_gateway" "ssh_gateway" {
+  vpc_id            = aws_vpc.ssh_gateway.id
 
   tags = {
-    Name  = "terraform_udemy_gateway"
+    Name  = "ssh_gateway"
   }
 }
 
-resource "aws_route_table" "route-table-terraform-udemy" {
-  vpc_id            = aws_vpc.terraform_udemy.id
+resource "aws_route_table" "ssh_gateway" {
+  vpc_id            = aws_vpc.ssh_gateway.id
   route {
     cidr_block  = "0.0.0.0/0"
-    gateway_id  = aws_internet_gateway.terraform_udemy_gateway.id
+    gateway_id  = aws_internet_gateway.ssh_gateway.id
   }
 
   tags = {
-    Name  = "route-table-terraform-udemy"
+    Name  = "ssh_gateway"
   }
 }
 
-resource "aws_route_table_association" "subnet-association-terraform-udemy-ssh-gateway" {
-  subnet_id       = aws_subnet.terraform_udemy_subnet_1.id
-  route_table_id  = aws_route_table.route-table-terraform-udemy.id
+resource "aws_route_table_association" "ssh_gateway" {
+  subnet_id       = aws_subnet.ssh_gateway.id
+  route_table_id  = aws_route_table.ssh_gateway.id
 }
 
-/*
-data "aws_instances" "terraform_udemy_ssh_gateway" {
-  instance_tags = {
-     Role  = "terraform_udemy_ssh_gateway"
-  }
-}
-*/
-
-output "terraform_udemy_ssh_gateways" {
-  value = aws_instance.terraform_udemy_ssh_gateway.public_ip
+output "ssh_gateway" {
+  value = aws_instance.ssh_gateway.public_ip
 }

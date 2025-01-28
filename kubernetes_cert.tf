@@ -1,0 +1,309 @@
+// *************************************************************************
+// ****  CERTIFICATE AUTHORITY *********************************************
+// *************************************************************************
+
+resource "tls_private_key" "kubernetes_ca" {
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_self_signed_cert" "kubernetes" {
+  private_key_pem   = tls_private_key.kubernetes_ca.private_key_pem
+  is_ca_certificate = true
+
+  subject {
+    common_name         = "Kubernetes"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "Kubernetes"
+    organizational_unit = "CA"
+    province            = "Massachusetts"
+  }
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "cert_signing",
+    "key_encipherment",
+    "server_auth",
+    "client_auth",
+    ]
+}
+
+
+// *************************************************************************
+// ****  ADMIN CLIENT CERTIFICATE ******************************************
+// *************************************************************************
+
+resource "tls_private_key" "kubernetes_admin_client" {
+
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_admin_client" {
+  private_key_pem   = tls_private_key.kubernetes_admin_client.private_key_pem
+
+  subject {
+    common_name         = "admin"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "system:masters"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+}
+
+resource "tls_locally_signed_cert" "kubernetes_admin_client" {
+  cert_request_pem      = tls_cert_request.kubernetes_admin_client.cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
+
+locals {
+  kubernetes_worker_private_dns= [
+    for instance in aws_instance.kubernetes_worker : instance.private_dns
+  ]
+  kubernetes_worker_private_ip = [
+    for instance in aws_instance.kubernetes_worker : instance.private_ip
+  ]
+  kubernetes_worker_public_ip = [
+    for instance in aws_instance.kubernetes_worker : instance.public_ip
+  ]
+}
+
+// *************************************************************************
+// ****  KUBELET CLIENT CERTIFICATES ***************************************
+// *************************************************************************
+
+resource "tls_private_key" "kubernetes_kubelet_client" {
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_kubelet_client" {
+  count = length(aws_instance.kubernetes_worker)
+  private_key_pem   = tls_private_key.kubernetes_kubelet_client.private_key_pem
+
+  subject {
+    common_name         = "system:nodes:${local.kubernetes_worker_private_dns[count.index]}"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "system:nodes"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+
+  dns_names = [
+  local.kubernetes_worker_private_dns[count.index],
+  ]
+
+  ip_addresses = [
+  local.kubernetes_worker_private_ip[count.index],
+  local.kubernetes_worker_public_ip[count.index],
+  ]
+}
+
+resource "tls_locally_signed_cert" "kubernetes_kubelet_client" {
+  count = length(tls_cert_request.kubernetes_kubelet_client)
+  cert_request_pem      = tls_cert_request.kubernetes_kubelet_client[count.index].cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
+
+// *************************************************************************
+// **** CONTROLLER MANAGER CLIENT CERTIFICATE ******************************
+// *************************************************************************
+
+
+resource "tls_private_key" "kubernetes_controller_manager_client" {
+
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_controller_manager_client" {
+    
+  private_key_pem   = tls_private_key.kubernetes_controller_manager_client.private_key_pem
+
+  subject {
+    common_name         = "system:kube-controller-manager"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "system:kube-controller-manager"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+}
+
+resource "tls_locally_signed_cert" "kubernetes_controller_manager_client" {
+  cert_request_pem      = tls_cert_request.kubernetes_controller_manager_client.cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
+
+// *************************************************************************
+// **** KUBE PROXY CLIENT CERTIFICATE **************************************
+// *************************************************************************
+
+
+resource "tls_private_key" "kubernetes_kube_proxy_client" {
+
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_kube_proxy_client" {
+    
+  private_key_pem   = tls_private_key.kubernetes_kube_proxy_client.private_key_pem
+
+  subject {
+    common_name         = "system:kube-proxy"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "system:kube-proxier"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+}
+
+resource "tls_locally_signed_cert" "kubernetes_kube_proxy_client" {
+  cert_request_pem      = tls_cert_request.kubernetes_kube_proxy_client.cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
+
+// *************************************************************************
+// **** SCHEDULER CLIENT CERTIFICATE ***************************************
+// *************************************************************************
+
+
+resource "tls_private_key" "kubernetes_kube_scheduler_client" {
+
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_kube_scheduler_client" {
+    
+  private_key_pem   = tls_private_key.kubernetes_kube_scheduler_client.private_key_pem
+
+  subject {
+    common_name         = "system:kube-scheduler"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "system:kube-scheduler"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+}
+
+resource "tls_locally_signed_cert" "kubernetes_kube_scheduler_client" {
+  cert_request_pem      = tls_cert_request.kubernetes_kube_scheduler_client.cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
+
+// *************************************************************************
+// **** API SERVER CERTIFICATE *********************************************
+// *************************************************************************
+
+
+resource "tls_private_key" "kubernetes_api_server" {
+
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_api_server" {
+    
+  private_key_pem   = tls_private_key.kubernetes_api_server.private_key_pem
+
+  subject {
+    common_name         = "Kubernetes"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "Kubernetes"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+}
+
+resource "tls_locally_signed_cert" "kubernetes_api_server" {
+  cert_request_pem      = tls_cert_request.kubernetes_api_server.cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
+
+// *************************************************************************
+// **** SERVICE ACCOUNT KEY PAIR *******************************************
+// *************************************************************************
+
+
+resource "tls_private_key" "kubernetes_service_accounts" {
+
+  algorithm   = "RSA"
+  rsa_bits    = "2048"
+}
+
+resource "tls_cert_request" "kubernetes_service_accounts" {
+    
+  private_key_pem   = tls_private_key.kubernetes_service_accounts.private_key_pem
+
+  subject {
+    common_name         = "service-accounts"
+    country             = "US"
+    locality            = "Boston"
+    organization        = "service-accounts"
+    organizational_unit = "Kubernetes The Hard Way"
+    province            = "Massachusetts"
+  }
+}
+
+resource "tls_locally_signed_cert" "kubernetes_service_accounts" {
+  cert_request_pem      = tls_cert_request.kubernetes_service_accounts.cert_request_pem
+  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
+  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "client_auth",
+    ]
+}
