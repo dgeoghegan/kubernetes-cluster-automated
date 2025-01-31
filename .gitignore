@@ -50,3 +50,4 @@ terraform.rc
 
 *credentials*.tf
 
+ansible/files_from_terraform/*
