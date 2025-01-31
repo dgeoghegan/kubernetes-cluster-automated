@@ -18,7 +18,7 @@ resource "aws_instance" "kubernetes_controller" {
   count                       = 3
   associate_public_ip_address = true
   ami                         = data.aws_ami.ubuntu-kubernetes.id  
-  key_name                    = "kubernetes"
+  key_name                    = "kubernetes_ssh_key"
   vpc_security_group_ids      = [
     aws_security_group.kubernetes.id,
   ]
@@ -41,7 +41,7 @@ resource "aws_instance" "kubernetes_worker" {
   count                       = 3
   associate_public_ip_address = true
   ami                         = data.aws_ami.ubuntu-kubernetes.id  
-  key_name                    = "kubernetes"
+  key_name                    = "kubernetes_ssh_key"
   vpc_security_group_ids      = [
     aws_security_group.kubernetes.id,
   ]
