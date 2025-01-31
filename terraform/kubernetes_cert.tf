@@ -83,13 +83,14 @@ locals {
 // *************************************************************************
 
 resource "tls_private_key" "kubernetes_kubelet_client" {
+  count = length(aws_instance.kubernetes_worker)
   algorithm   = "RSA"
   rsa_bits    = "2048"
 }
 
 resource "tls_cert_request" "kubernetes_kubelet_client" {
   count = length(aws_instance.kubernetes_worker)
-  private_key_pem   = tls_private_key.kubernetes_kubelet_client.private_key_pem
+  private_key_pem   = tls_private_key.kubernetes_kubelet_client[count.index].private_key_pem
 
   subject {
     common_name         = "system:nodes:${local.kubernetes_worker_private_dns[count.index]}"
