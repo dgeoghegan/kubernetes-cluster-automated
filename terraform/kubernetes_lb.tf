@@ -29,7 +29,3 @@ resource "aws_lb_listener" "kubernetes" {
     target_group_arn  = aws_lb_target_group.kubernetes.arn
   }
 }
-
-output "kubernetes_public_dns" {
-  value = aws_lb.kubernetes.dns_name
-}

@@ -40,7 +40,3 @@ resource "aws_route_table_association" "ssh_gateway" {
   subnet_id       = aws_subnet.ssh_gateway.id
   route_table_id  = aws_route_table.ssh_gateway.id
 }
-
-output "ssh_gateway" {
-  value = aws_instance.ssh_gateway.public_ip
-}
