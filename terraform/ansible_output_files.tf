@@ -93,3 +93,144 @@ resource "local_file" "kubernetes_ca_key_pem" {
   filename = "${local.ansible_file_path}/ca-key.pem"
   content = tls_private_key.kubernetes_ca.private_key_pem
 }
+
+resource "local_file" "kubernetes_worker_kubeconfig" {
+  count = length(aws_instance.kubernetes_worker)
+  filename = "${local.ansible_file_path}/${aws_instance.kubernetes_worker[count.index].tags.Name}.kubeconfig"
+  content = <<EOT
+apiVersion: v1
+kind: Config
+
+clusters:
+- cluster:
+    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
+    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+  name: kubernetes-the-hard-way
+
+users:
+- name: system:node:${local.kubernetes_worker_network_info[count.index].name}
+  user:
+    client-certificate-data: ${base64encode(tls_locally_signed_cert.kubernetes_kubelet_client[count.index].cert_pem)}
+    client-key-data: ${base64encode(tls_private_key.kubernetes_kubelet_client[count.index].private_key_pem)}
+
+contexts:
+- name: default
+  context:
+    cluster: kubernetes-the-hard-way
+    user: system:node:${local.kubernetes_worker_network_info[count.index].name}
+    
+current-context: default
+EOT
+}
+
+resource "local_file" "kubernetes_kube_proxy_kubeconfig" {
+  filename = "${local.ansible_file_path}/kube-proxy.kubeconfig"
+  content = <<EOT
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: kubernetes-the-hard-way
+  cluster:
+    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
+    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+
+users:
+- name: system:kube-proxy
+  user:
+    client-certificate-data: ${base64encode(tls_locally_signed_cert.kubernetes_kube_proxy_client.cert_pem)}
+    client-key-data: ${base64encode(tls_private_key.kubernetes_kube_proxy_client.private_key_pem)}
+
+contexts:
+- name: default
+  context:
+    cluster: kubernetes-the-hard-way
+    user: system:kube-proxy
+    
+current-context: default
+EOT
+}
+
+resource "local_file" "kubernetes_controller_manager_kubeconfig" {
+  filename = "${local.ansible_file_path}/kube-controller-manager.kubeconfig"
+  content = <<EOT
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: kubernetes-the-hard-way
+  cluster:
+    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
+    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+
+users:
+- name: system:kube-controller-manager
+  user:
+    client-certificate-data: ${base64encode(tls_locally_signed_cert.kubernetes_controller_manager_client.cert_pem)}
+    client-key-data: ${base64encode(tls_private_key.kubernetes_controller_manager_client.private_key_pem)}
+
+contexts:
+- name: default
+  context:
+    cluster: kubernetes-the-hard-way
+    user: system:kube-controller-manager
+    
+current-context: default
+EOT
+}
+
+resource "local_file" "kubernetes_kube_scheduler_kubeconfig" {
+  filename = "${local.ansible_file_path}/kube-scheduler.kubeconfig"
+  content = <<EOT
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: kubernetes-the-hard-way
+  cluster:
+    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
+    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+
+users:
+- name: system:kube-scheduler
+  user:
+    client-certificate-data: ${base64encode(tls_locally_signed_cert.kubernetes_kube_scheduler_client.cert_pem)}
+    client-key-data: ${base64encode(tls_private_key.kubernetes_kube_scheduler_client.private_key_pem)}
+
+contexts:
+- name: default
+  context:
+    cluster: kubernetes-the-hard-way
+    user: system:kube-scheduler
+    
+current-context: default
+EOT
+}
+
+resource "local_file" "kubernetes_admin_kubeconfig" {
+  filename = "${local.ansible_file_path}/admin.kubeconfig"
+  content = <<EOT
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: kubernetes-the-hard-way
+  cluster:
+    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
+    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+
+users:
+- name: admin
+  user:
+    client-certificate-data: ${base64encode(tls_locally_signed_cert.kubernetes_admin_client.cert_pem)}
+    client-key-data: ${base64encode(tls_private_key.kubernetes_admin_client.private_key_pem)}
+
+contexts:
+- name: default
+  context:
+    cluster: kubernetes-the-hard-way
+    user: admin
+    
+current-context: default
+EOT
+}

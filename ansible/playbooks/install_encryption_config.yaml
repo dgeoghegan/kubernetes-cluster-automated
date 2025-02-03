@@ -1,0 +1,14 @@
+---
+- name: Copy encryption config to each kubernetes controller
+  hosts: kubernetes_controllers
+  become: yes
+  tasks:
+  - name: Copy encryption config to each controller
+    copy:
+      src: "{{ item }}"
+      dest: "~/"
+      owner: ubuntu
+      group: ubuntu
+      mode: '0600'
+    loop:
+    - "/ansible/files_from_terraform/encryption-config.yaml"
