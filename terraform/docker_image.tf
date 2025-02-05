@@ -62,6 +62,9 @@ EOF
 }
 
 resource "aws_instance" "docker_server" {
+  depends_on = [
+    aws_key_pair.docker_ssh_key
+  ]
   ami                     = data.aws_ami.ubuntu-docker.id
   instance_type           = var.docker_instance_type
   key_name                = "docker_ssh_key"
