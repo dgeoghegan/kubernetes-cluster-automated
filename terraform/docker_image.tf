@@ -39,25 +39,79 @@ resource "aws_key_pair" "docker_ssh_key" {
 }
 
 variable "docker_ec2_user_data" {
-  description = "User data for installing Docker on new container"
-  type = string
-  default = <<-EOF
+  description = "User data for installing Docker and Buildx on new container"
+  type        = string
+  default     = <<-EOF
 #!/bin/bash
 
 # Ensure /ansible is created
-  mkdir -p /ansible
-  chown -R ubuntu:ubuntu /ansible
-  chmod 755 /ansible
+mkdir -p /ansible
+chown -R ubuntu:ubuntu /ansible
+chmod 755 /ansible
 
-# Install Docker
-  sudo apt-get update -y
-  sudo apt-get install docker.io -y
-  sudo systemctl enable docker
-  sudo usermod -aG docker ubuntu
-  newgrp docker
+# Update system packages
+sudo apt-get update -y
+sudo apt-get upgrade -y
 
-# Make sure user data is run on every boot
-echo "@reboot root bash /var/lib/cloud/instance/scripts/part-001" >> /etc/crontab
+# Install required dependencies
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release
+
+# Add Docker’s official GPG key
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# Add the Docker APT repository
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Update and install Docker
+sudo apt-get update -y
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+
+# Enable and start Docker service
+sudo systemctl enable --now docker
+
+# Add 'ubuntu' user to the Docker group
+sudo usermod -aG docker ubuntu
+
+# Install Buildx manually if needed
+if ! docker buildx version >/dev/null 2>&1; then
+  echo "⚠️ Buildx not found. Installing manually..."
+
+  # Create directory for Buildx
+  sudo mkdir -p /usr/lib/docker/cli-plugins
+
+  # Determine system architecture
+  ARCH=$(uname -m)
+  if [[ "$ARCH" == "x86_64" ]]; then
+    ARCH="amd64"
+  elif [[ "$ARCH" == "aarch64" ]]; then
+    ARCH="arm64"
+  else
+    echo "❌ Unsupported architecture: $ARCH"
+    exit 1
+  fi
+
+  # Fetch latest Buildx version
+  BUILDX_VERSION=$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
+  
+  if [[ -z "$BUILDX_VERSION" ]]; then
+    echo "❌ Error: Could not retrieve Buildx version from GitHub."
+    exit 1
+  fi
+
+  # Download Buildx binary
+  BUILDX_URL="https://github.com/docker/buildx/releases/download/$BUILDX_VERSION/buildx-linux-$ARCH"
+  sudo curl -fsSL "$BUILDX_URL" -o /usr/lib/docker/cli-plugins/docker-buildx
+
+  # Set permissions
+  sudo chmod +x /usr/lib/docker/cli-plugins/docker-buildx
+  echo "✅ Buildx installed successfully."
+else
+  echo "✅ Buildx is already installed."
+fi
+
+# Ensure user data script runs on every boot (optional)
+echo "@reboot root bash /var/lib/cloud/instance/scripts/part-001" | sudo tee -a /etc/crontab > /dev/null
+
 EOF
 }
 

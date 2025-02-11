@@ -1,0 +1,77 @@
+- name: Copy etcd.service to each kubernetes controller
+  hosts: kubernetes_controllers
+  become: yes
+  tasks:
+  - name: Create directory for etcd installation
+    file:
+      path: "/etc/etcd"
+      state: directory
+      mode: '0700'
+
+  - name: Create directory /var/lib/etcd
+    file:
+      path: "/var/lib/etcd"
+      state: directory
+      mode: '0700'
+
+  - name: Download etcd binaries
+    get_url:
+      url: "https://github.com/etcd-io/etcd/releases/download/v3.5.18/etcd-v3.5.18-linux-amd64.tar.gz"
+      dest: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+      mode: '0644'
+
+  - name: Extract etcd binaries
+    unarchive:
+      src: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+      dest: "/tmp/"
+      remote_src: yes
+    register: extracted_files
+
+  - name: Check contents of the extracted directory
+    command: ls /tmp/etcd-v3.5.18-linux-amd64/
+    register: extracted_files
+    ignore_errors: yes
+
+  - name: Debug extracted files
+    debug:
+      var: extracted_files.stdout_lines
+
+  - name: Move etcd binaries to /usr/local/bin
+    become: yes
+    shell:
+      cmd: mv /tmp/etcd-v3.5.18-linux-amd64/etcd* /usr/local/bin/
+    when: extracted_files.rc == 0
+    register: mv_output
+
+  - name: Debug mv output
+    debug:
+      var: mv_output
+
+  - name: Copy etcd certs to each controller
+    copy:
+      src: "{{ item }}"
+      dest: "/etc/etcd/"
+      owner: root
+      group: root
+      mode: '0600'
+    loop:
+    - "/ansible/files_from_terraform/ca.pem"
+    - "/ansible/files_from_terraform/kubernetes-key.pem"
+    - "/ansible/files_from_terraform/kubernetes.pem"
+
+  - name: Copy etcd.service to each controller
+    copy:
+      src: "/ansible/files_from_terraform/etcd.service{{ inventory_hostname }}"
+      dest: "/etc/systemd/system/etcd.service"
+      owner: root
+      group: root
+      mode: '0644'
+    register: etcd_service_change
+
+  - name: Reload systemd and restart etcd if etcd.service was updated
+    systemd:
+      name: etcd
+      daemon_reload: yes
+      enabled: yes
+      state: started
+    when: etcd_service_change.changed
