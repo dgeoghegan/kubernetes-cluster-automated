@@ -14,38 +14,85 @@
       state: directory
       mode: '0700'
 
-  - name: Download etcd binaries
+  - name: Check if etcd binary exists
+    stat:
+      path: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+    register: etcd_binary_stat
+
+  - name: Get checksum of local etcd binaries
+    shell: "sha256sum /tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+    register: local_etcd_checksum
+    when: etcd_binary_stat.stat.exists
+    changed_when: false
+
+  - name: Set local checksum to empty if binary does not exist
+    set_fact:
+      local_etcd_checksum:
+        stdout: ""
+    when: not etcd_binary_stat.stat.exists
+
+  - name: Download checksums of etcd binaries
+    get_url:
+      url: "https://github.com/etcd-io/etcd/releases/download/v3.5.18/SHA256SUMS"
+      dest: "/tmp/SHA256SUMS"
+      mode: '0644'
+
+  - name: Get expected checksum for etcd binaries
+    shell: "grep etcd-v3.5.18-linux-amd64.tar.gz /tmp/SHA256SUMS | awk '{print $1}'"
+    register: expected_etcd_checksum
+    changed_when: false
+    ignore_errors: true
+
+  - name: Compare local and expected etcd binaries checksums
+    debug:
+      msg: "Checksum is different, downloading etcd"
+    when: local_etcd_checksum.stdout.split()[0] != expected_etcd_checksum.stdout
+    register: etcd_checksums_different
+
+  - name: Download etcd binaries (only if checksum is different)
     get_url:
       url: "https://github.com/etcd-io/etcd/releases/download/v3.5.18/etcd-v3.5.18-linux-amd64.tar.gz"
       dest: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
       mode: '0644'
+    register: download_etcd
+    when:
+      - local_etcd_checksum.stdout.split()[0] != expected_etcd_checksum.stdout or local_etcd_checksum.stdout == ""
 
-  - name: Extract etcd binaries
+  - name: Set flag if checksums are different or binary does not exist
+    set_fact:
+      etcd_checksums_different: "{{ download_etcd.changed }}"
+    when: download_etcd is defined
+
+  - name: Extract etcd binaries only if they were downloaded
     unarchive:
       src: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
       dest: "/tmp/"
       remote_src: yes
-    register: extracted_files
+    when: etcd_checksums_different
 
   - name: Check contents of the extracted directory
     command: ls /tmp/etcd-v3.5.18-linux-amd64/
     register: extracted_files
     ignore_errors: yes
+    when: etcd_checksums_different
 
   - name: Debug extracted files
     debug:
       var: extracted_files.stdout_lines
+    when: etcd_checksums_different
 
   - name: Move etcd binaries to /usr/local/bin
     become: yes
     shell:
       cmd: mv /tmp/etcd-v3.5.18-linux-amd64/etcd* /usr/local/bin/
-    when: extracted_files.rc == 0
-    register: mv_output
+    when:
+      - download_etcd.changed  # Only move if download_etcd changed
+      - extracted_files.rc == 0  # Ensure the extraction was successful
 
   - name: Debug mv output
     debug:
       var: mv_output
+    when: etcd_checksums_different
 
   - name: Copy etcd certs to each controller
     copy:
