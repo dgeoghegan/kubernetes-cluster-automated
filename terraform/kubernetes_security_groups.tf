@@ -51,3 +51,11 @@ resource "aws_vpc_security_group_ingress_rule" "kubernetes_icmp_all" {
   to_port           = -1
   ip_protocol       = "icmp"
 }
+
+resource "aws_vpc_security_group_egress_rule" "kubernetes_outbound_all" {
+  security_group_id = aws_security_group.kubernetes.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = -1
+  to_port           = -1
+  ip_protocol       = -1
+}

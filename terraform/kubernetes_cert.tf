@@ -258,6 +258,19 @@ resource "tls_cert_request" "kubernetes_api_server" {
     organizational_unit = "Kubernetes The Hard Way"
     province            = "Massachusetts"
   }
+  
+  dns_names = [
+    "kubernetes",
+    "kubernetes.default",
+    "kubernetes.default.svc",
+    "kubernetes.default.svc.cluster",
+    "kubernetes.svc.cluster.local",
+    "${aws_lb.kubernetes.dns_name}"
+  ]
+  ip_addresses = flatten([
+    ["127.0.0.1"],
+    [for controller in local.kubernetes_controller_network_info : controller.private_ip]
+  ])
 }
 
 resource "tls_locally_signed_cert" "kubernetes_api_server" {
@@ -269,6 +282,9 @@ resource "tls_locally_signed_cert" "kubernetes_api_server" {
 
   allowed_uses = [
     "client_auth",
+    "server_auth",
+    "key_encipherment",
+    "digital_signature"
     ]
 }
 
