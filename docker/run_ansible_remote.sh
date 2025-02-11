@@ -90,13 +90,14 @@ done
 REMOTE_ANSIBLE_CMD="docker run --rm \
     -v $REMOTE_ANSIBLE_DIR/playbooks:/ansible/playbooks \
     -v $REMOTE_ANSIBLE_DIR/files_from_terraform:/ansible/files_from_terraform \
-    ubuntu-ansible "
+    ubuntu-ansible bash -c '"
 
 # Add playbooks to the command with correct inventory path
 for PLAYBOOK in "${SELECTED_PLAYBOOKS[@]}"; do
     REMOTE_ANSIBLE_CMD+="ansible-playbook -i /ansible/files_from_terraform/inventory.ini /ansible/playbooks/$(basename "$PLAYBOOK") && "
 done
 REMOTE_ANSIBLE_CMD=${REMOTE_ANSIBLE_CMD%&& }  # Remove trailing '&&'
+REMOTE_ANSIBLE_CMD+="'"
 
 # Ensure Ansible directory permissions are correct on the remote server
 echo "🔧 Setting correct permissions on remote Ansible directory..."
@@ -104,7 +105,8 @@ ssh -o "StrictHostKeyChecking no" -i "$SSH_KEY_PATH" "ubuntu@$DOCKER_SERVER_IP" 
 
 # Run Ansible remotely inside Docker with full live output streaming and logging
 echo "🚀 Executing Ansible inside Docker remotely on $DOCKER_SERVER_IP..."
-ssh -o "StrictHostKeyChecking no" -i "$SSH_KEY_PATH" "ubuntu@$DOCKER_SERVER_IP" "bash -c '$REMOTE_ANSIBLE_CMD 2>&1 | tee /ansible/ansible_run.log'" | tee "$LOG_FILE"
+echo "🚀 Running command on remote server: $REMOTE_ANSIBLE_CMD"
+ssh -o "StrictHostKeyChecking no" -i "$SSH_KEY_PATH" "ubuntu@$DOCKER_SERVER_IP" "$REMOTE_ANSIBLE_CMD 2>&1 | tee /ansible/ansible_run.log" | tee "$LOG_FILE"
 
 echo "✅ Ansible execution completed remotely."
 echo "📜 Logs stored locally at: $LOG_FILE"
