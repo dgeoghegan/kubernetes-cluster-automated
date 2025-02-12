@@ -1,6 +1,8 @@
-- name: Copy etcd.service to each kubernetes controller
+- name: Install ETCD
   hosts: kubernetes_controllers
   become: yes
+  vars:
+    etcd_version: "3.5.18" # use format x.y.z with no preceding "v"
   tasks:
   - name: Create directory for etcd installation
     file:
@@ -16,11 +18,11 @@
 
   - name: Check if etcd binary exists
     stat:
-      path: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+      path: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
     register: etcd_binary_stat
 
   - name: Get checksum of local etcd binaries
-    shell: "sha256sum /tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+    shell: "sha256sum /tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
     register: local_etcd_checksum
     when: etcd_binary_stat.stat.exists
     changed_when: false
@@ -33,12 +35,12 @@
 
   - name: Download checksums of etcd binaries
     get_url:
-      url: "https://github.com/etcd-io/etcd/releases/download/v3.5.18/SHA256SUMS"
+      url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/SHA256SUMS"
       dest: "/tmp/SHA256SUMS"
       mode: '0644'
 
   - name: Get expected checksum for etcd binaries
-    shell: "grep etcd-v3.5.18-linux-amd64.tar.gz /tmp/SHA256SUMS | awk '{print $1}'"
+    shell: "grep etcd-v{{ etcd_version }}-linux-amd64.tar.gz /tmp/SHA256SUMS | awk '{print $1}'"
     register: expected_etcd_checksum
     changed_when: false
     ignore_errors: true
@@ -51,8 +53,8 @@
 
   - name: Download etcd binaries (only if checksum is different)
     get_url:
-      url: "https://github.com/etcd-io/etcd/releases/download/v3.5.18/etcd-v3.5.18-linux-amd64.tar.gz"
-      dest: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+      url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+      dest: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
       mode: '0644'
     register: download_etcd
     when:
@@ -65,13 +67,13 @@
 
   - name: Extract etcd binaries only if they were downloaded
     unarchive:
-      src: "/tmp/etcd-v3.5.18-linux-amd64.tar.gz"
+      src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
       dest: "/tmp/"
       remote_src: yes
     when: etcd_checksums_different
 
   - name: Check contents of the extracted directory
-    command: ls /tmp/etcd-v3.5.18-linux-amd64/
+    command: ls /tmp/etcd-v{{ etcd_version }}-linux-amd64/
     register: extracted_files
     ignore_errors: yes
     when: etcd_checksums_different
@@ -84,7 +86,7 @@
   - name: Move etcd binaries to /usr/local/bin
     become: yes
     shell:
-      cmd: mv /tmp/etcd-v3.5.18-linux-amd64/etcd* /usr/local/bin/
+      cmd: mv /tmp/etcd-v{{ etcd_version }}-linux-amd64/etcd* /usr/local/bin/
     when:
       - download_etcd.changed  # Only move if download_etcd changed
       - extracted_files.rc == 0  # Ensure the extraction was successful
