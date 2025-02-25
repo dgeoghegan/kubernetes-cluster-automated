@@ -22,7 +22,7 @@
     register: etcd_binary_stat
 
   - name: Get checksum of local etcd binaries
-    shell: "sha256sum /tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    shell: "sha256sum /tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz | cut -f 1 -d ' '"
     register: local_etcd_checksum
     when: etcd_binary_stat.stat.exists
     changed_when: false
@@ -38,6 +38,7 @@
       url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/SHA256SUMS"
       dest: "/tmp/SHA256SUMS"
       mode: '0644'
+    changed_when: false
 
   - name: Get expected checksum for etcd binaries
     shell: "grep etcd-v{{ etcd_version }}-linux-amd64.tar.gz /tmp/SHA256SUMS | awk '{print $1}'"
@@ -45,10 +46,18 @@
     changed_when: false
     ignore_errors: true
 
+  - name: Debug local checksum
+    debug:
+      var: local_etcd_checksum.stdout
+
+  - name: Debug expected checksum
+    debug:
+      var: expected_etcd_checksum.stdout
+
   - name: Compare local and expected etcd binaries checksums
     debug:
       msg: "Checksum is different, downloading etcd"
-    when: local_etcd_checksum.stdout.split()[0] != expected_etcd_checksum.stdout
+    when: local_etcd_checksum.stdout != expected_etcd_checksum.stdout
     register: etcd_checksums_different
 
   - name: Download etcd binaries (only if checksum is different)
@@ -57,8 +66,8 @@
       dest: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
       mode: '0644'
     register: download_etcd
-    when:
-      - local_etcd_checksum.stdout.split()[0] != expected_etcd_checksum.stdout or local_etcd_checksum.stdout == ""
+    when: local_etcd_checksum.stdout | default('') != expected_etcd_checksum.stdout
+    changed_when: true  # Force the task to be marked as changed when the binaries are downloaded
 
   - name: Set flag if checksums are different or binary does not exist
     set_fact:
