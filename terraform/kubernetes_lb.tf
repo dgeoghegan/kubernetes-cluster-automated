@@ -11,6 +11,15 @@ resource "aws_lb_target_group" "kubernetes" {
   port            = 6443
   protocol        = "TCP"
   vpc_id          = aws_vpc.kubernetes-the-hard-way.id
+
+  health_check {
+    protocol  = "TCP"
+    port      = "6443"
+    interval  = 30
+    timeout   = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_target_group_attachment" "kubernetes" {
