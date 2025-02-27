@@ -1,0 +1,135 @@
+- name: Install Kubernetes Control Plane Components
+  hosts: kubernetes_controllers
+  become: yes
+  vars:
+    kubernetes_version: "1.32.2"  # Kubernetes version to be used
+  tasks:
+    - name: Create directory for kubernetes installation
+      file:
+        path: "/etc/kubernetes"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /var/lib/kubernetes
+      file:
+        path: "/var/lib/kubernetes"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /tmp/kubernetes-v{{ kubernetes_version }}
+      file:
+        path: "/tmp/kubernetes-v{{ kubernetes_version }}"
+        state: directory
+        mode: '0666'
+
+    - name: Check if kubernetes binary tarball exists
+      stat:
+        path: "/tmp/kubernetes-v{{ kubernetes_version }}/kubernetes-server-linux-amd64.tar.gz"
+      register: kubernetes_binary_stat
+
+    - name: Set local checksum to empty if binary tarball does not exist
+      set_fact:
+        local_kubernetes_checksum: ""
+      when: not kubernetes_binary_stat.stat.exists
+
+    - name: Get checksum of local kubernetes binary tarball if it exists
+      shell: "sha512sum /tmp/kubernetes-v{{ kubernetes_version }}/kubernetes-server-linux-amd64.tar.gz | cut -f 1 -d ' '"
+      register: local_kubernetes_checksum
+      when: kubernetes_binary_stat.stat.exists
+      changed_when: false
+
+    - name: Download checksums of kubernetes binaries
+      get_url:
+        url: "https://dl.k8s.io/v{{ kubernetes_version }}/SHA512SUMS"
+        dest: "/tmp/kubernetes-v{{ kubernetes_version }}/"
+        mode: '0644'
+      changed_when: false
+
+    - name: Get expected checksum for  kubernetes binary tarball
+      shell: "grep kubernetes-server-linux-amd64.tar.gz /tmp/kubernetes-v{{ kubernetes_version }}/SHA512SUMS | cut -f 1 -d ' '"
+      register: expected_kubernetes_checksum
+      changed_when: false
+
+    - name: Debug local and expected kubernetes checksums
+      debug:
+        msg:
+          - "Local Kubernetes checksum: {{ local_kubernetes_checksum.stdout | default('Not Defined') }}"
+          - "Expected Kubernetes checksum: {{ expected_kubernetes_checksum.stdout | default('Not Defined') }}"
+
+    - name: Download kubernetes binaries (only if checksum is different)
+      get_url:
+        url: "https://dl.k8s.io/v{{ kubernetes_version }}/kubernetes-server-linux-amd64.tar.gz"
+        dest: "/tmp/kubernetes-v{{ kubernetes_version }}/"
+        mode: '0644'
+      register: download_kubernetes
+      when: local_kubernetes_checksum.stdout | default('') != expected_kubernetes_checksum.stdout or local_kubernetes_checksum.stdout == ""
+
+    - name: Set flag if tarball has been downloaded or extracted
+      set_fact:
+        kubernetes_checksums_different: "{{ download_kubernetes.changed }}"
+      when: download_kubernetes is defined
+
+    - name: Check if kubernetes tarball has already been extracted
+      stat:
+        path: "/tmp/kubernetes-v{{ kubernetes_version }}/kubernetes/server/bin"
+      register: kubernetes_extracted_stat
+
+    - name: Ensure destination directory exists before extracting
+      file:
+        path: "/tmp/kubernetes-v{{ kubernetes_version }}/"
+        state: directory
+        mode: '0755'
+      when: kubernetes_extracted_stat.stat.exists == false or kubernetes_checksums_different
+
+    - name: Extract kubernetes binaries if tarball is not expanded
+      unarchive:
+        src: "/tmp/kubernetes-v{{ kubernetes_version }}/kubernetes-server-linux-amd64.tar.gz"
+        dest: "/tmp/kubernetes-v{{ kubernetes_version }}/"
+        remote_src: yes
+      when: kubernetes_extracted_stat.stat.exists == false or kubernetes_checksums_different
+
+    - name: Check contents of the extracted directory
+      command: ls /tmp/kubernetes-v{{ kubernetes_version }}/kubernetes/server/bin/
+      register: extracted_files
+      ignore_errors: yes
+      when: kubernetes_checksums_different
+
+    - name: Debug extracted files
+      debug:
+        var: extracted_files.stdout_lines
+      when: kubernetes_checksums_different
+
+    - name: Ensure kubernetes binaries exist after extraction
+      stat:
+        path: "/tmp/kubernetes-v{{ kubernetes_version }}/kubernetes/server/bin/kube-apiserver"
+      register: kubernetes_binaries_stat
+
+    - name: Extract again if kubernetes binaries don't exist
+      unarchive:
+        src: "/tmp/kubernetes-v{{ kubernetes_version }}/kubernetes-server-linux-amd64.tar.gz"
+        dest: "/tmp/kubernetes-v{{ kubernetes_version }}/"
+        remote_src: yes
+      when: kubernetes_binaries_stat.stat.exists == false
+
+    - name: Debug if kubernetes binaries are missing
+      debug:
+        msg: "Kubernetes binaries still missing after extraction."
+      when: kubernetes_binaries_stat.stat.exists == false
+
+    - name: Copy kubernetes binaries to /usr/local/bin
+      become: yes
+      shell: |
+        cp /tmp/kubernetes-v{{ kubernetes_version }}/kubernetes/server/bin/{{ item }} /usr/local/bin/
+      loop:
+        - kube-apiserver
+        - kube-controller-manager
+        - kube-scheduler
+        - kubectl
+      when: kubernetes_binaries_stat.stat.exists == true and kubernetes_checksums_different
+      register: cp_output
+
+    - name: Debug cp output
+      debug:
+        var: cp_output
+      when: kubernetes_binaries_stat.stat.exists == true
+

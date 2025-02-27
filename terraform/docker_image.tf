@@ -38,92 +38,36 @@ resource "aws_key_pair" "docker_ssh_key" {
   public_key  = tls_private_key.docker_ssh_key.public_key_openssh
 }
 
-variable "docker_ec2_user_data" {
-  description = "User data for installing Docker and Buildx on new container"
-  type        = string
-  default     = <<-EOF
-#!/bin/bash
+data "template_file" "docker_server_user_data" {
+  template = file("${path.module}/docker_server_user_data.tpl")
 
-# Ensure /ansible is created
-mkdir -p /ansible
-chown -R ubuntu:ubuntu /ansible
-chmod 755 /ansible
-
-# Update system packages
-sudo apt-get update -y
-sudo apt-get upgrade -y
-
-# Install required dependencies
-sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release
-
-# Add Docker’s official GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-
-# Add the Docker APT repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Update and install Docker
-sudo apt-get update -y
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
-
-# Enable and start Docker service
-sudo systemctl enable --now docker
-
-# Add 'ubuntu' user to the Docker group
-sudo usermod -aG docker ubuntu
-
-# Install Buildx manually if needed
-if ! docker buildx version >/dev/null 2>&1; then
-  echo "⚠️ Buildx not found. Installing manually..."
-
-  # Create directory for Buildx
-  sudo mkdir -p /usr/lib/docker/cli-plugins
-
-  # Determine system architecture
-  ARCH=$(uname -m)
-  if [[ "$ARCH" == "x86_64" ]]; then
-    ARCH="amd64"
-  elif [[ "$ARCH" == "aarch64" ]]; then
-    ARCH="arm64"
-  else
-    echo "❌ Unsupported architecture: $ARCH"
-    exit 1
-  fi
-
-  # Fetch latest Buildx version
-  BUILDX_VERSION=$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
-  
-  if [[ -z "$BUILDX_VERSION" ]]; then
-    echo "❌ Error: Could not retrieve Buildx version from GitHub."
-    exit 1
-  fi
-
-  # Download Buildx binary
-  BUILDX_URL="https://github.com/docker/buildx/releases/download/$BUILDX_VERSION/buildx-linux-$ARCH"
-  sudo curl -fsSL "$BUILDX_URL" -o /usr/lib/docker/cli-plugins/docker-buildx
-
-  # Set permissions
-  sudo chmod +x /usr/lib/docker/cli-plugins/docker-buildx
-  echo "✅ Buildx installed successfully."
-else
-  echo "✅ Buildx is already installed."
-fi
-
-# Ensure user data script runs on every boot (optional)
-echo "@reboot root bash /var/lib/cloud/instance/scripts/part-001" | sudo tee -a /etc/crontab > /dev/null
-
-EOF
+  vars = {
+    volume_id = replace(aws_ebs_volume.docker_images.id, "-", "") # Remove hyphen for volume symlink,
+    volume_size = var.docker_images_volume_size
+  }
 }
+
+data "aws_ebs_volume" "docker_images" {
+  filter {
+    name    = "tag:Name"
+    values  = ["docker_images"]
+  }
+}
+
+data "aws_availability_zones" "available" {}
+
 
 resource "aws_instance" "docker_server" {
   depends_on = [
-    aws_key_pair.docker_ssh_key
+    aws_key_pair.docker_ssh_key,
+    aws_ebs_volume.docker_images
   ]
   ami                     = data.aws_ami.ubuntu-docker.id
   instance_type           = var.docker_instance_type
   key_name                = "docker_ssh_key"
   vpc_security_group_ids  = [aws_security_group.docker_security_group.id]
-  user_data               = var.docker_ec2_user_data
+  user_data               = data.template_file.docker_server_user_data.rendered
+  availability_zone       = aws_ebs_volume.docker_images.availability_zone
   tags = {
     Name = "EC2-Docker-Instance"
   }
@@ -160,6 +104,7 @@ locals {
   docker_file_path_default = "${path.module}/../docker/files_from_terraform"
   docker_file_path = length(var.docker_file_path_override) > 0 ? var.docker_file_path_override : local.docker_file_path_default
   docker_ssh_key_path = "${local.docker_file_path}/docker_ssh_key"
+  docker_images_ebs_availability_zone = try(data.aws_ebs_volume.docker_images.availability_zone, data.aws_availability_zones.available.names[0])
 }
 
 output "docker_public_ip" {
@@ -204,4 +149,23 @@ resource "null_resource" "copy_ansible_files_to_docker" {
     source = "${local.ansible_file_path}/../"
     destination = "/ansible/"
   }
+}
+
+resource "aws_ebs_volume" "docker_images" {
+  availability_zone = local.docker_images_ebs_availability_zone
+  size              = var.docker_images_volume_size
+  type              = "gp3"
+  tags = {
+    Name = "docker_images"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_volume_attachment" "docker_images" {
+  device_name = "/dev/xvdf"
+  volume_id   = aws_ebs_volume.docker_images.id
+  instance_id = aws_instance.docker_server.id
 }
