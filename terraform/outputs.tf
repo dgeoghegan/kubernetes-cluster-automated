@@ -6,6 +6,10 @@ output "kubernetes_worker_network_info" {
   value = local.kubernetes_worker_network_info
 }
 
+output "kubernetes_controller_network_info" {
+  value = local.kubernetes_controller_network_info
+}
+
 output "kubernetes_public_dns" {
   value = aws_lb.kubernetes.dns_name
 }

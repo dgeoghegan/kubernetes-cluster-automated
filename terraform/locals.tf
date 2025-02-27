@@ -7,6 +7,10 @@ locals {
       name        = aws_instance.kubernetes_worker[idx].tags["Name"]
     }
   ]
+
+  kubernetes_worker_host_entries = [
+    for worker in local.kubernetes_worker_network_info : "${worker.private_ip} ${split(".", worker.private_dns)[0]}"
+  ]
   
   kubernetes_controller_network_info = [
     for idx in range(length(aws_instance.kubernetes_controller)) : {
