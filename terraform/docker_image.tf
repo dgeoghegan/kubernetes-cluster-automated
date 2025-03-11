@@ -38,12 +38,35 @@ resource "aws_key_pair" "docker_ssh_key" {
   public_key  = tls_private_key.docker_ssh_key.public_key_openssh
 }
 
+data "aws_region" "current" {}
+
+data "aws_s3_objects" "s3_files" {
+  bucket = var.s3_bucket_name
+  prefix = "ansible/"
+}
+
+data "external" "presigned_s3_urls" {
+  for_each = toset(data.aws_s3_objects.s3_files.keys)
+
+  program = ["/bin/bash", "-c", <<EOT
+#!/bin/bash
+echo "{\"url\": \"$(aws s3 presign s3://${var.s3_bucket_name}/${each.key} --region ${data.aws_region.current.name} --expires-in 3600)\"}"
+EOT
+  ]
+}
+
+locals {
+  presigned_s3_bucket_urls = [for file, data in data.external.presigned_s3_urls : data.result["url"]]
+}
+
 data "template_file" "docker_server_user_data" {
   template = file("${path.module}/docker_server_user_data.tpl")
 
   vars = {
     volume_id = replace(aws_ebs_volume.docker_images.id, "-", "") # Remove hyphen for volume symlink,
     volume_size = var.docker_images_volume_size
+    presigned_urls = join("\n",local.presigned_s3_bucket_urls)
+    bucket_name    = var.s3_bucket_name
   }
 }
 
@@ -56,7 +79,6 @@ data "aws_ebs_volume" "docker_images" {
 
 data "aws_availability_zones" "available" {}
 
-
 resource "aws_instance" "docker_server" {
   depends_on = [
     aws_key_pair.docker_ssh_key,
@@ -68,8 +90,15 @@ resource "aws_instance" "docker_server" {
   vpc_security_group_ids  = [aws_security_group.docker_security_group.id]
   user_data               = data.template_file.docker_server_user_data.rendered
   availability_zone       = aws_ebs_volume.docker_images.availability_zone
+
+  iam_instance_profile    = aws_iam_instance_profile.kubernetes_s3_access_profile.name
+
   tags = {
     Name = "EC2-Docker-Instance"
+  }
+
+  lifecycle {
+    ignore_changes = [ami] # Prevent Terraform from forcing a rebuild due to AMI changes
   }
 }
 
@@ -109,46 +138,6 @@ locals {
 
 output "docker_public_ip" {
   value = aws_instance.docker_server.public_ip
-}
-
-resource "null_resource" "copy_ansible_files_to_docker" {
-  depends_on = [ aws_instance.docker_server ]
-  provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]  # Forces Terraform to use Bash (fixes unexpected token errors)
-    command = <<EOT
-    for i in $(seq 1 10); do
-      echo "🔍 Checking SSH connectivity to docker_server (Attempt $i)..."
-      if ssh -o "StrictHostKeyChecking=no" -i "${local.docker_ssh_key_path}" ubuntu@${aws_instance.docker_server.public_ip} "echo 'SSH Ready'"; then
-        exit 0
-      fi
-      sleep 10
-    done
-    echo "❌ SSH is still not available after 10 attempts. Exiting."
-    exit 1
-    EOT
-  }
-
-  connection {
-    type = "ssh"
-    user = "ubuntu"
-    private_key = tls_private_key.docker_ssh_key.private_key_openssh
-    host = aws_instance.docker_server.public_ip
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo '🔧 Setting correct permissions on /ansible'",
-      "sudo mkdir -p /ansible",
-      "sudo chown -R ubuntu:ubuntu /ansible",
-      "sudo chmod -R 755 /ansible",
-      "ls -ld /ansible"  # Debugging step to confirm permissions
-    ]
-  }
-
-  provisioner "file" {
-    source = "${local.ansible_file_path}/../"
-    destination = "/ansible/"
-  }
 }
 
 resource "aws_ebs_volume" "docker_images" {

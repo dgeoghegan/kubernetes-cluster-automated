@@ -35,6 +35,10 @@ resource "aws_instance" "kubernetes_controller" {
     Name  = "controller-${count.index}"
   }
   source_dest_check           = false
+
+  lifecycle {
+    ignore_changes = [ami] # Prevent Terraform from forcing a rebuild due to AMI changes
+  }
 }
 
 resource "aws_instance" "kubernetes_worker" {
@@ -58,4 +62,8 @@ resource "aws_instance" "kubernetes_worker" {
     Name  = "worker-${count.index}"
   }
   source_dest_check           = false
+
+  lifecycle {
+    ignore_changes = [ami] # Prevent Terraform from forcing a rebuild due to AMI changes
+  }
 }

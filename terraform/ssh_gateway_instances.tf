@@ -27,4 +27,8 @@ resource "aws_instance" "ssh_gateway" {
     Name  = "ssh_gateway"
     Role  = "ssh_gateway"
   }
+
+  lifecycle {
+    ignore_changes = [ami] # Prevent Terraform from forcing a rebuild due to AMI changes
+  }
 }

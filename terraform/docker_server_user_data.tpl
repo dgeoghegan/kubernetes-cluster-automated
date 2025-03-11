@@ -151,6 +151,24 @@ echo "$DEVICE_PATH_RESOLVED $MOUNT_POINT ext4 defaults,nofail 0 2" | sudo tee -a
 log "Restarting Docker service..."
 sudo systemctl start docker
 
+log "Copying Ansible files from S3 bucket..."
+ANSIBLE_DIR="/ansible"
+sudo mkdir -p "$ANSIBLE_DIR"
+sudo chown -R ubuntu:ubuntu "$ANSIBLE_DIR"
+sudo chmod 755 "$ANSIBLE_DIR"
+
+# Presigned URLs passed from Terraform
+PRESIGNED_URLS=("${presigned_urls}")
+
+# Download all files
+log "Downloading Ansible files from S3..."
+echo "$PRESIGNED_URLS" | while read -r URL; do
+  FILE_NAME=$(basename "$URL" | cut -d '?' -f1)  # Extract filename
+  log "Downloading $FILE_NAME..."
+  curl -o "/ansible/$FILE_NAME" "$URL"
+done
+log "✅ All files downloaded successfully to $ANSIBLE_DIR."
+
 # Ensure user data script runs on every boot
 log "Setting up user-data script to run on reboot..."
 echo "@reboot root bash /var/lib/cloud/instance/scripts/part-001" | sudo tee -a /etc/crontab > /dev/null
