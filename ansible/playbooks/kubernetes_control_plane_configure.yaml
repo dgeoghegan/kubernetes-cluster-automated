@@ -1,0 +1,96 @@
+- name: Configure Kubernetes Control Plane
+  hosts: kubernetes_controllers
+  become: yes
+  tasks:
+    - name: Copy controller certs to each controller
+      copy:
+        src: "/ansible/files_from_terraform/{{ item }}"
+        dest: "/var/lib/kubernetes/"
+        owner: root
+        group: root
+        mode: '0600'
+      loop:
+      - "ca.pem"
+      - "ca-key.pem"
+      - "kubernetes-key.pem"
+      - "kubernetes.pem"
+      - "service-account-key.pem"
+      - "service-account.pem"
+      - "encryption-config.yaml"
+  
+    - name: Copy correct kube-apiserver.service to each controller
+      copy:
+        src: "{{ item }}"
+        dest: "/etc/systemd/system/kube-apiserver.service"
+        owner: root
+        group: root
+        mode: '0644'
+      with_fileglob:
+      - "/ansible/files_from_terraform/kube-apiserver.service{{ inventory_hostname }}"
+      register: kube_apiserver_service_change
+
+    - name: Reload systemd and restart kube-apiserver if service file updated
+      systemd:
+        name: kube-apiserver
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      when: kube_apiserver_service_change.changed
+  
+    - name: Copy kube-controller-manager.service to /etc/systemd/system/
+      copy:
+        src: "/ansible/files_from_terraform/kube-controller-manager.service"
+        dest: "/etc/systemd/system/"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kube_controller_manager_service_change
+
+    - name: Reload systemd and restart kube-controller-manager if service file updated
+      systemd:
+        name: kube-scheduler
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      when: kube_controller_manager_service_change.changed
+  
+    - name: Copy kube-scheduler.yaml to /var/lib/kubernetes
+      copy:
+        src: "/ansible/files_from_terraform/kube-scheduler.yaml"
+        dest: "/var/lib/kubernetes/"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kube_scheduler_config_change
+  
+    - name: Copy kube-scheduler.service to /etc/systemd/system/
+      copy:
+        src: "/ansible/files_from_terraform/kube-scheduler.service"
+        dest: "/etc/systemd/system/"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kube_scheduler_service_change
+
+    - name: Reload systemd and restart kube-controller-manager if service file updated
+      systemd:
+        name: kube-scheduler
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      when: kube_scheduler_config_change.changed or kube_scheduler_service_change.changed
+
+    - name: Gather host info for each worker node
+      local_action:
+        module: slurp
+        src: "/ansible/files_from_terraform/workers.host"
+      register: worker_hosts_file
+
+    - name: Update /etc/hosts to include worker nodes
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item }}"
+        create: yes
+        state: present
+      loop: "{{ (worker_hosts_file.content | b64decode).splitlines() }}"
+      
