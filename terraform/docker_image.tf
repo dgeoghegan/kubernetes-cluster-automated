@@ -55,10 +55,14 @@ data "aws_availability_zones" "available" {}
 resource "aws_instance" "docker_server" {
   depends_on = [
     aws_s3_object.common_configs,
+    aws_s3_object.per_worker_configs,
     aws_s3_object.per_worker_certs,
     aws_s3_object.per_worker_cert_pems,
-    aws_s3_object.per_worker_configs,
-    aws_s3_object.per_controller_configs,
+    aws_s3_object.per_controller_kube_apiserver,
+    aws_s3_object.per_controller_etcd,
+    aws_s3_object.ansible_inventory,
+    aws_s3_object.dockerfiles,
+    aws_s3_object.ansible_playbooks,
     aws_s3_object.s3_files_list
   ]
   ami                     = data.aws_ami.ubuntu-docker.id

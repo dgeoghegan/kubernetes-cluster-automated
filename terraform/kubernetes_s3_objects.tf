@@ -84,8 +84,8 @@ data "external" "presigned_s3_urls" {
     keys(local.common_config_contents),
     keys(local.per_worker_configs),
     keys(local.per_controller_configs),
-    fileset("../ansible/playbooks", "*.yaml"),
-    fileset("../docker", "*.dockerfile")
+    tolist(fileset("../ansible/playbooks", "*.yaml")),
+    tolist(fileset("../docker", "*.dockerfile"))
   ))
 
   program = ["/bin/bash", "-c", <<EOT

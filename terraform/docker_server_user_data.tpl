@@ -122,8 +122,7 @@ curl -o "/ansible/$URL_LIST_FILE_NAME" "$PRESIGNED_URLS_LIST"
 log "Downloading Ansible files from S3..."
 while IFS= read -r URL; do
   # Extract the relative path by finding the position after "ansible/"
-  RELATIVE_PATH=$(echo "$URL" | sed -E 's|.*/ansible/([^?]+).*|\1|')
-
+  RELATIVE_PATH=$(echo "$URL" | sed -E 's|.*/([^?]+).*|\1|')
   # Ensure the target directory exists
   TARGET_PATH="/ansible/$RELATIVE_PATH"
   TARGET_DIR=$(dirname "$TARGET_PATH")
