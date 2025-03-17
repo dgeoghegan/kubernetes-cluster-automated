@@ -8,35 +8,7 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Use AWS NVMe device symlink
-VOLUME_ID="${volume_id}"  # Replace with the Terraform-defined volume ID
-DEVICE_PATH="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$VOLUME_ID"
-MOUNT_POINT="/var/lib/docker"
-
 log "Started user-data script."
-
-# Wait for the device to appear, extend retries and give more time
-log "Waiting for $DEVICE_PATH to be available..."
-RETRIES=60  # Try up to 60 times (60 seconds)
-SLEEP_TIME=5  # Wait for 5 seconds between each attempt
-
-for i in $(seq 1 $RETRIES); do
-    if [ -e "$DEVICE_PATH" ]; then
-        log "$DEVICE_PATH is available."
-        break
-    else
-        log "Waiting for $DEVICE_PATH to appear... ($i/$RETRIES)"
-        sleep $SLEEP_TIME
-    fi
-done
-
-# If the device is not found after all retries, exit with error
-if [ ! -e "$DEVICE_PATH" ]; then
-    log "Error: $DEVICE_PATH not found after $RETRIES attempts."
-    exit 1
-fi
-
-log "$DEVICE_PATH is available."
 
 # Ensure /ansible is created
 log "Creating /ansible directory."
@@ -44,6 +16,13 @@ mkdir -p /ansible
 chown -R ubuntu:ubuntu /ansible
 chmod 755 /ansible
 log "Directory /ansible created and permissions set."
+
+# Ensure /var/lib/docker exists (no separate volume)
+log "Creating /var/lib/docker directory."
+mkdir -p /var/lib/docker
+chown -R root:root /var/lib/docker
+chmod 755 /var/lib/docker
+log "Directory /var/lib/docker created."
 
 # Update system packages
 log "Updating system packages..."
@@ -121,35 +100,9 @@ else
     log "✅ Buildx installed successfully."
 fi
 
-# Check if the device is mounted at the desired mount point
-log "Checking if $DEVICE_PATH is mounted at $MOUNT_POINT..."
-
-# Resolve the symlink to the actual device path
-DEVICE_PATH_RESOLVED=$(readlink -f "$DEVICE_PATH")
-
-# Check if the device is mounted
-if mount | grep -q "$DEVICE_PATH_RESOLVED"; then
-    log "✅ $DEVICE_PATH_RESOLVED is already mounted at $MOUNT_POINT."
-else
-    log "❌ $DEVICE_PATH_RESOLVED is not mounted at $MOUNT_POINT. Attempting to mount."
-
-    # Mount the device if it's not already mounted
-    sudo mkdir -p "$MOUNT_POINT"
-    sudo mount "$DEVICE_PATH_RESOLVED" "$MOUNT_POINT"
-    if [ $? -eq 0 ]; then
-        log "✅ Successfully mounted $DEVICE_PATH_RESOLVED at $MOUNT_POINT."
-    else
-        log "❌ Failed to mount $DEVICE_PATH_RESOLVED at $MOUNT_POINT."
-        exit 1
-    fi
-fi
-
-log "Updating fstab for persistence..."
-sudo sed -i '/\/var\/lib\/docker/d' /etc/fstab
-echo "$DEVICE_PATH_RESOLVED $MOUNT_POINT ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab > /dev/null
-
+# Restart Docker service
 log "Restarting Docker service..."
-sudo systemctl start docker
+sudo systemctl restart docker
 
 log "Copying Ansible files from S3 bucket..."
 ANSIBLE_DIR="/ansible"
@@ -158,15 +111,27 @@ sudo chown -R ubuntu:ubuntu "$ANSIBLE_DIR"
 sudo chmod 755 "$ANSIBLE_DIR"
 
 # Presigned URLs passed from Terraform
-PRESIGNED_URLS=("${presigned_urls}")
+PRESIGNED_URLS_LIST="${presigned_urls_list}"
 
-# Download all files
+# Download list of presigned URLs
+log "Downloading list of presigned URLs..."
+URL_LIST_FILE_NAME=$(basename "$PRESIGNED_URLS_LIST" | cut -d '?' -f1)
+curl -o "/ansible/$URL_LIST_FILE_NAME" "$PRESIGNED_URLS_LIST"
+
+# Download all files while preserving directory structure
 log "Downloading Ansible files from S3..."
-echo "$PRESIGNED_URLS" | while read -r URL; do
-  FILE_NAME=$(basename "$URL" | cut -d '?' -f1)  # Extract filename
-  log "Downloading $FILE_NAME..."
-  curl -o "/ansible/$FILE_NAME" "$URL"
-done
+while IFS= read -r URL; do
+  # Extract the relative path by finding the position after "ansible/"
+  RELATIVE_PATH=$(echo "$URL" | sed -E 's|.*/ansible/([^?]+).*|\1|')
+
+  # Ensure the target directory exists
+  TARGET_PATH="/ansible/$RELATIVE_PATH"
+  TARGET_DIR=$(dirname "$TARGET_PATH")
+  mkdir -p "$TARGET_DIR"
+
+  log "Downloading $RELATIVE_PATH..."
+  curl -o "$TARGET_PATH" "$URL"
+done < "/ansible/$URL_LIST_FILE_NAME"
 log "✅ All files downloaded successfully to $ANSIBLE_DIR."
 
 # Ensure user data script runs on every boot
