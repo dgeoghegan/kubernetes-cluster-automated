@@ -1,3 +1,4 @@
+# Common Configs
 resource "aws_s3_object" "common_configs" {
   for_each = local.common_config_contents
   bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
@@ -5,6 +6,7 @@ resource "aws_s3_object" "common_configs" {
   content  = each.value
 }
 
+# Per-Worker Certificates & Kubeconfigs
 resource "aws_s3_object" "per_worker_configs" {
   for_each = local.per_worker_configs
   bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
@@ -29,7 +31,8 @@ resource "aws_s3_object" "per_worker_cert_pems" {
   content = each.value.cert_pem
 }
 
-resource "aws_s3_object" "per_controller_configs" {
+# Per-Controller Configs
+resource "aws_s3_object" "per_controller_kube_apiserver" {
   for_each = local.per_controller_configs
   bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
 
@@ -45,37 +48,23 @@ resource "aws_s3_object" "per_controller_etcd" {
   content = each.value.etcd_service
 }
 
-resource "aws_s3_object" "per_controller_kubeconfigs" {
-  for_each = local.per_controller_configs
-  bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
-
-  key     = "configs/controllers/${each.key}/kube-controller-manager.kubeconfig"
-  content = each.value.kube_controller_manager_kubeconfig
-}
-
-resource "aws_s3_object" "per_controller_scheduler_kubeconfigs" {
-  for_each = local.per_controller_configs
-  bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
-
-  key     = "configs/controllers/${each.key}/kube-scheduler.kubeconfig"
-  content = each.value.kube_scheduler_kubeconfig
-}
-
+# Ansible Inventory
 resource "aws_s3_object" "ansible_inventory" {
   bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
   key      = "ansible/inventory.ini"
   content  = local.kubernetes_inventory_ini_contents
 }
 
+# Dockerfiles
 resource "aws_s3_object" "dockerfiles" {
   for_each = local.dockerfiles
   bucket   = aws_s3_bucket.kubernetes_cluster_automated.id
 
-  key     = "dockerfiles/${each.key}"
+  key     = "dockerfiles/${each.key}.dockerfile"
   content = each.value
 }
 
-# Dynamically upload Ansible playbooks
+# Dynamically Upload Ansible Playbooks
 data "local_file" "ansible_playbooks" {
   for_each = fileset("../ansible/playbooks", "*.yaml")
   filename = "../ansible/playbooks/${each.value}"
@@ -89,36 +78,26 @@ resource "aws_s3_object" "ansible_playbooks" {
   content = each.value.content
 }
 
-locals {
-  # Collect all files stored in S3
-  all_s3_files = concat(
-    keys(local.common_config_contents),                          # Common configs
-    [for worker, files in local.per_worker_configs : "configs/workers/${worker}/kubeconfig"],
-    [for worker, files in local.per_worker_configs : "configs/workers/${worker}/key.pem"],
-    [for worker, files in local.per_worker_configs : "configs/workers/${worker}/cert.pem"],
-    [for controller, files in local.per_controller_configs : "configs/controllers/${controller}/kube-apiserver.service"],
-    [for controller, files in local.per_controller_configs : "configs/controllers/${controller}/etcd.service"],
-    [for controller, files in local.per_controller_configs : "configs/controllers/${controller}/kube-controller-manager.kubeconfig"],
-    [for controller, files in local.per_controller_configs : "configs/controllers/${controller}/kube-scheduler.kubeconfig"],
-    ["ansible/inventory.ini"],
-    keys(local.dockerfiles),                                    # Dockerfiles
-    [for file in fileset("../ansible/playbooks", "*.yaml") : "ansible/playbooks/${file}"] # Ansible playbooks
-  )
-}
-
+# Presigned S3 URLs for Downloading Configs on Docker Server
 data "external" "presigned_s3_urls" {
-  for_each = toset(local.all_s3_files)
+  for_each = toset(concat(
+    keys(local.common_config_contents),
+    keys(local.per_worker_configs),
+    keys(local.per_controller_configs),
+    fileset("../ansible/playbooks", "*.yaml"),
+    fileset("../docker", "*.dockerfile")
+  ))
 
   program = ["/bin/bash", "-c", <<EOT
 #!/bin/bash
-echo "{\"url\": \"$(aws s3 presign s3://${var.s3_bucket_name}/${each.key} --region ${data.aws_region.current.name} --expires-in 3600)\"}"
+echo "{\"url\": \"$(aws s3 presign s3://${var.s3_bucket_name}/configs/${each.key} --region ${data.aws_region.current.name} --expires-in 3600)\"}"
 EOT
   ]
 }
 
 locals {
   presigned_s3_bucket_urls = [for file, data in data.external.presigned_s3_urls : data.result["url"]]
-  s3_files_list_filename = "presigned_urls.txt"
+  s3_files_list_filename   = "presigned_urls.txt"
 }
 
 resource "aws_s3_object" "s3_files_list" {

@@ -42,7 +42,7 @@ resources:
             secret: ${random_bytes.kubernetes_encryption_key.base64}
     - identity: {}
 EOT
-    "kube-scheduler.service" = <<EOT
+    "kube_scheduler_service" = <<EOT
 [Unit]
 Description=Kubernetes Scheduler
 Documentation=https://github.com/kubernetes/kubernetes
@@ -56,6 +56,30 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+EOT
+    "kube_scheduler_kubeconfig" = <<EOT
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: kubernetes-the-hard-way
+  cluster:
+    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
+    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+
+users:
+- name: system:kube-scheduler
+  user:
+    client-certificate-data: ${base64encode(tls_locally_signed_cert.kubernetes_kube_scheduler_client.cert_pem)}
+    client-key-data: ${base64encode(tls_private_key.kubernetes_kube_scheduler_client.private_key_pem)}
+
+contexts:
+- name: default
+  context:
+    cluster: kubernetes-the-hard-way
+    user: system:kube-scheduler
+    
+current-context: default
 EOT
   }
 
@@ -94,7 +118,7 @@ EOT
   ############################
   per_controller_configs = {
     for idx, controller in aws_instance.kubernetes_controller : controller.tags["Name"] => {
-      "kube-apiserver.service" = <<EOT
+      "kube_apiserver_service" = <<EOT
 [Unit]
 Description=Kubernetes API Server
 Documentation=https://github.com/kubernetes/kubernetes
@@ -117,7 +141,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOT
 
-      "etcd.service" = <<EOT
+      "etcd_service" = <<EOT
 [Unit]
 Description=etcd
 Documentation=https://github.com/coreos
@@ -138,7 +162,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOT
 
-      "kube-controller-manager.kubeconfig" = <<EOT
+      "kube_controller_manager_kubeconfig" = <<EOT
 apiVersion: v1
 kind: Config
 clusters:
