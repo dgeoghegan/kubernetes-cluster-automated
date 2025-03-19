@@ -1,12 +1,18 @@
+locals {
+# Cluster 0 uses 10.0.0.0/16 and 10.0.200.0/16, cluster 1 uses 10.1.0.0/16 and 10.1.200.0/16, etc.
+  vpc_cidr      = cidrsubnet("10.0.0.0/8", 8, var.cluster_index)
+  service_cidr  = cidrsubnet("10.0.200.0/8", 8, var.cluster_index)
+}
+
 resource "aws_vpc" "vpc" {
   count                 = var.cloud_type == "aws" ? 1 : 0
-  cidr_block            = var.network_cidr
+  cidr_block            = local.vpc_cidr
   instance_tenancy      = "default"
   enable_dns_hostnames  = true
   enable_dns_support    = true
 
   tags = {
-    Name = var.network_name
+    Name = "${var.network_name}-cluster-${var.cluster_index}"
   }
 }
 
@@ -24,8 +30,9 @@ locals {
   # Generate a subnet CIDR for each zone
   subnets = [
     for i in range(local.max_zones) :
-    cidrsubnet(var.network_cidr, local.subnet_newbits, i)
+    cidrsubnet(local.vpc_cidr, local.subnet_newbits, i)
   ]
+
 }
 
 

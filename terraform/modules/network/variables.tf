@@ -10,10 +10,10 @@ variable "network_name" {
   default     = "kubernetes-cluster-automated"
 }
 
-variable "network_cidr" {
-  description = "CIDR block for the overall network (VPC in AWS/GCP, VNet in Azure). Not used for VirtualBox."
-  type        = string
-  default     = "10.0.0.0/16"
+variable "cluster_index" {
+  description = "A unique index for this cluster (0, 1, 2, etc.), used to derive network CIDRs."
+  type        = number
+  default     = 0
 }
 
 variable "region" {
