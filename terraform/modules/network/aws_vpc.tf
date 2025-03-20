@@ -1,7 +1,7 @@
 locals {
 # Cluster 0 uses 10.0.0.0/16 and 10.0.200.0/16, cluster 1 uses 10.1.0.0/16 and 10.1.200.0/16, etc.
   vpc_cidr      = cidrsubnet("10.0.0.0/8", 8, var.cluster_index)
-  service_cidr  = cidrsubnet("10.0.200.0/8", 8, var.cluster_index)
+  service_cidr  = cidrsubnet(local.vpc_cidr, 8, 200)
 }
 
 resource "aws_vpc" "vpc" {
@@ -35,7 +35,6 @@ locals {
 
 }
 
-
 resource "aws_subnet" "subnet" {
   count             = var.cloud_type == "aws" ? local.max_zones : 0
   vpc_id            = aws_vpc.vpc[0].id
@@ -44,13 +43,17 @@ resource "aws_subnet" "subnet" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "subnet-${count.index}"
+    Name = "${var.network_name}-cluster-${var.cluster_index}-subnet-${count.index}"
   }
 
   lifecycle {
     precondition {
       condition     = local.max_zones > 0
       error_message = "Error: No valid availability zones found for the selected instance types!"
+    }
+    precondition {
+      condition     = !var.ha_enabled  || local.max_zones >= 3 # If HA enabled, then are there 3+ zones?
+      error_message = "Error: At least 3 Availability Zones are required for HA but only ${local.max_zones} are available in this region for that instance type."
     }
   }
 }
@@ -60,7 +63,7 @@ resource "aws_internet_gateway" "internet_gateway" {
   vpc_id            = aws_vpc.vpc[0].id
 
   tags = {
-    Name  = var.network_name
+    Name = "${var.network_name}-cluster-${var.cluster_index}"
   }
 }
 
@@ -73,7 +76,7 @@ resource "aws_route_table" "route_table" {
   }
 
   tags = {
-    Name  = var.network_name
+    Name = "${var.network_name}-cluster-${var.cluster_index}"
   }
 }
 
