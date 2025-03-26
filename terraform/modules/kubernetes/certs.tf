@@ -1,37 +1,4 @@
 // *************************************************************************
-// ****  CERTIFICATE AUTHORITY *********************************************
-// *************************************************************************
-
-resource "tls_private_key" "kubernetes_ca" {
-  algorithm   = "RSA"
-  rsa_bits    = "2048"
-}
-
-resource "tls_self_signed_cert" "kubernetes" {
-  private_key_pem   = tls_private_key.kubernetes_ca.private_key_pem
-  is_ca_certificate = true
-
-  subject {
-    common_name         = "Kubernetes"
-    country             = "US"
-    locality            = "Boston"
-    organization        = "Kubernetes"
-    organizational_unit = "CA"
-    province            = "Massachusetts"
-  }
-
-  validity_period_hours = 8760
-
-  allowed_uses = [
-    "cert_signing",
-    "key_encipherment",
-    "server_auth",
-    "client_auth",
-    ]
-}
-
-
-// *************************************************************************
 // ****  ADMIN CLIENT CERTIFICATE ******************************************
 // *************************************************************************
 
@@ -56,8 +23,8 @@ resource "tls_cert_request" "kubernetes_admin_client" {
 
 resource "tls_locally_signed_cert" "kubernetes_admin_client" {
   cert_request_pem      = tls_cert_request.kubernetes_admin_client.cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
@@ -66,30 +33,18 @@ resource "tls_locally_signed_cert" "kubernetes_admin_client" {
     ]
 }
 
-locals {
-  kubernetes_worker_private_dns= [
-    for instance in aws_instance.kubernetes_worker : instance.private_dns
-  ]
-  kubernetes_worker_private_ip = [
-    for instance in aws_instance.kubernetes_worker : instance.private_ip
-  ]
-  kubernetes_worker_public_ip = [
-    for instance in aws_instance.kubernetes_worker : instance.public_ip
-  ]
-}
-
 // *************************************************************************
 // ****  KUBELET CLIENT CERTIFICATES ***************************************
 // *************************************************************************
 
 resource "tls_private_key" "kubernetes_kubelet_client" {
-  count = length(aws_instance.kubernetes_worker)
+  count = length(local.kubernetes_worker_private_dns)
   algorithm   = "RSA"
   rsa_bits    = "2048"
 }
 
 resource "tls_cert_request" "kubernetes_kubelet_client" {
-  count = length(aws_instance.kubernetes_worker)
+  count = length(local.kubernetes_worker_private_dns)
   private_key_pem   = tls_private_key.kubernetes_kubelet_client[count.index].private_key_pem
 
   subject {
@@ -114,8 +69,8 @@ resource "tls_cert_request" "kubernetes_kubelet_client" {
 resource "tls_locally_signed_cert" "kubernetes_kubelet_client" {
   count = length(tls_cert_request.kubernetes_kubelet_client)
   cert_request_pem      = tls_cert_request.kubernetes_kubelet_client[count.index].cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
@@ -151,8 +106,8 @@ resource "tls_cert_request" "kubernetes_controller_manager_client" {
 
 resource "tls_locally_signed_cert" "kubernetes_controller_manager_client" {
   cert_request_pem      = tls_cert_request.kubernetes_controller_manager_client.cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
@@ -188,8 +143,8 @@ resource "tls_cert_request" "kubernetes_kube_proxy_client" {
 
 resource "tls_locally_signed_cert" "kubernetes_kube_proxy_client" {
   cert_request_pem      = tls_cert_request.kubernetes_kube_proxy_client.cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
@@ -225,8 +180,8 @@ resource "tls_cert_request" "kubernetes_kube_scheduler_client" {
 
 resource "tls_locally_signed_cert" "kubernetes_kube_scheduler_client" {
   cert_request_pem      = tls_cert_request.kubernetes_kube_scheduler_client.cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
@@ -265,7 +220,7 @@ resource "tls_cert_request" "kubernetes_api_server" {
     "kubernetes.default.svc",
     "kubernetes.default.svc.cluster",
     "kubernetes.svc.cluster.local",
-    "${aws_lb.kubernetes.dns_name}"
+    var.load_balancer_dns_name
   ]
   ip_addresses = flatten([
     ["127.0.0.1"],
@@ -275,8 +230,8 @@ resource "tls_cert_request" "kubernetes_api_server" {
 
 resource "tls_locally_signed_cert" "kubernetes_api_server" {
   cert_request_pem      = tls_cert_request.kubernetes_api_server.cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
@@ -315,8 +270,8 @@ resource "tls_cert_request" "kubernetes_service_accounts" {
 
 resource "tls_locally_signed_cert" "kubernetes_service_accounts" {
   cert_request_pem      = tls_cert_request.kubernetes_service_accounts.cert_request_pem
-  ca_private_key_pem    = tls_private_key.kubernetes_ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.kubernetes.cert_pem
+  ca_private_key_pem    = var.private_key_pem
+  ca_cert_pem           = var.cert_pem
 
   validity_period_hours = 8760
 
