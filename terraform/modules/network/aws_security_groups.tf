@@ -19,7 +19,7 @@ resource "aws_vpc_security_group_ingress_rule" "all_from_cluster" {
 resource "aws_vpc_security_group_ingress_rule" "all_from_service" {
   count             = var.cloud_type == "aws" ? 1 : 0
   security_group_id = aws_security_group.sg[0].id
-  cidr_ipv4         = local.service_cidr
+  cidr_ipv4         = var.service_cidr
   ip_protocol       = -1 
 }
 

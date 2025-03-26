@@ -16,6 +16,12 @@ variable "cluster_index" {
   default     = 0
 }
 
+variable "service_cidr" {
+  description = "IP range for service cluster"
+  type        = string
+  default     = "172.16.0.0/16"
+}
+
 variable "region" {
   description = "The cloud region where the infrastructure is deployed."
   type        = string

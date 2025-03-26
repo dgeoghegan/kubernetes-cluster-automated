@@ -1,7 +1,6 @@
 locals {
-# Cluster 0 uses 10.0.0.0/16 and 10.0.200.0/16, cluster 1 uses 10.1.0.0/16 and 10.1.200.0/16, etc.
+# Cluster 0 uses 10.0.0.0/16, cluster 1 uses 10.1.0.0/16, etc.
   vpc_cidr      = cidrsubnet("10.0.0.0/8", 8, var.cluster_index)
-  service_cidr  = cidrsubnet(local.vpc_cidr, 8, 200)
 }
 
 resource "aws_vpc" "vpc" {
