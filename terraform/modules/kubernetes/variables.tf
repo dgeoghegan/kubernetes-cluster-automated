@@ -9,6 +9,12 @@ variable "load_balancer_dns_name" {
   type        = string
 }
 
+variable "load_balancer_listener_port" {
+  description = "Port number of load balancer listener"
+  type        = number
+  default     = 443
+}
+
 variable "cluster_index" {
   description = "A unique index for this cluster (0, 1, 2, etc.), used to derive network CIDRs."
   type        = number
