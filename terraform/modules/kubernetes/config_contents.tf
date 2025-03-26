@@ -14,9 +14,9 @@ EOT
   #################
   # Common Configs (Cluster-wide)
   #################
-  common_config_contents = {
-    "ca.pem"                      = tls_self_signed_cert.kubernetes.cert_pem
-    "ca-key.pem"                  = tls_private_key.kubernetes_ca.private_key_pem
+  common_configs = {
+    "ca.pem"                      = var.cert_pem
+    "ca-key.pem"                  = var.private_key_pem
     "admin.pem"                   = tls_locally_signed_cert.kubernetes_admin_client.cert_pem
     "admin-key.pem"               = tls_private_key.kubernetes_admin_client.private_key_pem
     "service-account.pem"         = tls_locally_signed_cert.kubernetes_service_accounts.cert_pem
@@ -64,8 +64,8 @@ kind: Config
 clusters:
 - name: kubernetes-the-hard-way
   cluster:
-    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
-    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+    server: https://${var.load_balancer_dns_name}:${var.load_balancer_listener_port}
+    certificate-authority-data: ${base64encode(var.cert_pem)}
 
 users:
 - name: system:kube-scheduler
@@ -95,8 +95,8 @@ apiVersion: v1
 kind: Config
 clusters:
 - cluster:
-    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
-    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+    server: https://${var.load_balancer_dns_name}:${var.load_balancer_listener_port}
+    certificate-authority-data: ${base64encode(var.cert_pem)}
   name: kubernetes-the-hard-way
 users:
 - name: system:node:${worker.tags["Name"]}
@@ -130,7 +130,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
   --bind-address=0.0.0.0 \
   --client-ca-file=/var/lib/kubernetes/ca.pem \
   --etcd-servers=https://${controller.private_ip}:2379 \
-  --service-cluster-ip-range=10.32.0.0/24 \
+  --service-cluster-ip-range=${var.service_cidr} \
   --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \
   --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
   --v=2
@@ -168,8 +168,8 @@ kind: Config
 clusters:
 - name: kubernetes-the-hard-way
   cluster:
-    server: https://${aws_lb.kubernetes.dns_name}:${aws_lb_listener.kubernetes.port}
-    certificate-authority-data: ${base64encode(tls_self_signed_cert.kubernetes.cert_pem)}
+    server: https://${var.load_balancer_dns_name}:${var.load_balancer_listener_port}
+    certificate-authority-data: ${base64encode(var.cert_pem)}
 users:
 - name: system:kube-controller-manager
   user:
@@ -184,4 +184,44 @@ current-context: default
 EOT
     }
   }
+
+  ############################
+  # Flattened File Paths for Storage Upload
+  ############################
+
+  # Flatten per-worker configs into file path => content
+  per_worker_configs_contents = merge([
+    for worker_name, files in local.per_worker_configs : {
+      for filename, content in files :
+      "configs/worker/${worker_name}/${filename}.pem" => content
+    }
+  ]...)
+
+  # Flatten per-controller configs
+  per_controller_configs_contents = merge([
+    for controller_name, files in local.per_controller_configs : {
+      for filename, content in files :
+      "configs/controller/${controller_name}/${filename}.service" => content
+    }
+  ]...)
+
+  # Flatten common files
+  common_configs_contents = {
+    for filename, content in local.common_configs:
+    "common/${filename}" => content
+  }
+
+  # Flatten inventory file
+  inventory_file_contents = {
+    "ansible/inventory.ini" = local.kubernetes_inventory_ini_contents
+  }
+
+  # Final map to pass to S3
+  flattened_kubernetes_file_contents = merge(
+    local.common_configs_contents,
+    local.per_worker_configs_contents,
+    local.per_controller_configs_contents,
+    local.inventory_file_contents
+  )
 }
+
