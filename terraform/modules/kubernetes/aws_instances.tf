@@ -19,7 +19,7 @@ resource "aws_instance" "kubernetes_controller" {
   count                       = var.cloud_type == "aws" ? var.controller_max : 0
   associate_public_ip_address = true
   ami                         = data.aws_ami.ubuntu-kubernetes[0].id  
-  key_name                    = aws_key_pair.kubernetes_ssh_key.key_name
+  key_name                    = aws_key_pair.kubernetes_ssh_key[0].key_name
   vpc_security_group_ids      = [
     var.security_group_id[0],
   ]
@@ -46,7 +46,7 @@ resource "aws_instance" "kubernetes_worker" {
   count                       = var.cloud_type == "aws" ? var.worker_max : 0
   associate_public_ip_address = true
   ami                         = data.aws_ami.ubuntu-kubernetes[0].id  
-  key_name                    = aws_key_pair.kubernetes_ssh_key.key_name
+  key_name                    = aws_key_pair.kubernetes_ssh_key[0].key_name
   vpc_security_group_ids      = [
     var.security_group_id[0],
   ]
