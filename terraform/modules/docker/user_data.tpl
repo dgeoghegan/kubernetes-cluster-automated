@@ -32,8 +32,16 @@ log "System packages updated."
 
 # Install required dependencies
 log "Installing required dependencies..."
-sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release unzip
 log "Dependencies installed."
+
+# Install AWS CLI
+log "Installing AWS CLI..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+log "AWS CLI installed."
+aws --version || log "⚠️ Failed to verify AWS CLI installation"
 
 # Add Docker’s official GPG key
 log "Adding Docker GPG key..."
@@ -103,35 +111,6 @@ fi
 # Restart Docker service
 log "Restarting Docker service..."
 sudo systemctl restart docker
-
-log "Copying Ansible files from S3 bucket..."
-ANSIBLE_DIR="/ansible"
-sudo mkdir -p "$ANSIBLE_DIR"
-sudo chown -R ubuntu:ubuntu "$ANSIBLE_DIR"
-sudo chmod 755 "$ANSIBLE_DIR"
-
-# Presigned URLs passed from Terraform
-PRESIGNED_URLS_LIST="${presigned_urls_list}"
-
-# Download list of presigned URLs
-log "Downloading list of presigned URLs..."
-URL_LIST_FILE_NAME=$(basename "$PRESIGNED_URLS_LIST" | cut -d '?' -f1)
-curl -o "/ansible/$URL_LIST_FILE_NAME" "$PRESIGNED_URLS_LIST"
-
-# Download all files while preserving directory structure
-log "Downloading Ansible files from S3..."
-while IFS= read -r URL; do
-  # Extract the relative path by finding the position after "ansible/"
-  RELATIVE_PATH=$(echo "$URL" | sed -E 's|.*/([^?]+).*|\1|')
-  # Ensure the target directory exists
-  TARGET_PATH="/ansible/$RELATIVE_PATH"
-  TARGET_DIR=$(dirname "$TARGET_PATH")
-  mkdir -p "$TARGET_DIR"
-
-  log "Downloading $RELATIVE_PATH..."
-  curl -o "$TARGET_PATH" "$URL"
-done < "/ansible/$URL_LIST_FILE_NAME"
-log "✅ All files downloaded successfully to $ANSIBLE_DIR."
 
 # Ensure user data script runs on every boot
 log "Setting up user-data script to run on reboot..."
