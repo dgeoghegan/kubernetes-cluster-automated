@@ -226,3 +226,16 @@ EOT
   )
 }
 
+resource "local_file" "kubernetes_ssh_key" {
+  filename              = "${path.root}/files_from_terraform/kubernetes_ssh_key"
+  content               = tls_private_key.kubernetes_ssh_key.private_key_pem
+  file_permission       = "0400"
+  directory_permission  = "0700"
+}
+
+resource "local_file" "inventory_ini" {
+  filename              = "${path.root}/files_from_terraform/inventory.ini"
+  content               = local.kubernetes_inventory_ini_contents
+  file_permission       = "0400"
+  directory_permission  = "0700"
+}

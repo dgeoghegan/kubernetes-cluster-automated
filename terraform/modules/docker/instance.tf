@@ -28,6 +28,13 @@ resource "aws_key_pair" "docker_ssh_key" {
   public_key  = tls_private_key.docker_ssh_key.public_key_openssh
 }
 
+resource "local_file" "docker_ssh_key" {
+  filename              = "${path.root}/files_from_terraform/docker_ssh_key"
+  content               = tls_private_key.docker_ssh_key.private_key_pem
+  file_permission       = "0400"
+  directory_permission  = "0700"
+}
+
 data "template_file" "docker_server_user_data" {
   count = var.cloud_type == "aws" ? 1 : 0
   template = file("${path.module}/user_data.tpl")
