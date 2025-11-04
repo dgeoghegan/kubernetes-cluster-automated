@@ -1,0 +1,18 @@
+# terraform.tfvars
+
+# ========== General ==========
+#network_name      = "sample"             # Base name for cluster tier
+#cluster_index     = 0                    # Unique index (0, 1, 2...) to avoid collisions within a tier
+#cloud_type        = "aws"                # Options: aws, gcp, azure
+#backend_type      = "s3"                 # Storage backend (currently only 's3')
+
+
+# ========== Cluster Settings ==========
+#controller_max     = 3                   # Max number of control plane nodes
+#worker_max         = 3                   # Max number of worker nodes
+#ha_enabled         = true                # Enable HA for control plane
+
+
+# ========== AWS-Specific ==========
+#instance_type        = "t3.micro"                           # EC2 instance type for all nodes
+#aws_credentials_file = "${path.module}/aws_credentials.ini" # Path to your local AWS creds
