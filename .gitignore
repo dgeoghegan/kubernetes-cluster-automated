@@ -49,6 +49,7 @@ override.tf.json
 terraform.rc
 
 *credentials*.tf
+*credentials*.ini
 
 **/files_from_terraform/*
 **/logs/*
