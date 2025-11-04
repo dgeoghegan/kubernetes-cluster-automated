@@ -2,12 +2,12 @@ locals {
     kubernetes_inventory_ini_contents = <<EOT
 [kubernetes_workers]
 %{for instance in local.kubernetes_worker_network_info}
-${instance.name} ansible_host=${instance.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=/ansible/files_from_terraform/kubernetes_ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+${instance.name} ansible_host=${instance.private_ip} ansible_user=ubuntu ansible_ssh_private_key_file=/ansible/common/kubernetes_ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 %{endfor}
 
 [kubernetes_controllers]
 %{for instance in local.kubernetes_controller_network_info}
-${instance.name} ansible_host=${instance.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=/ansible/files_from_terraform/kubernetes_ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+${instance.name} ansible_host=${instance.private_ip} ansible_user=ubuntu ansible_ssh_private_key_file=/ansible/common/kubernetes_ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 %{endfor}
 EOT
 
@@ -15,6 +15,7 @@ EOT
   # Common Configs (Cluster-wide)
   #################
   common_configs = {
+    "kubernetes_ssh_key"          = tls_private_key.kubernetes_ssh_key.private_key_pem
     "ca.pem"                      = var.cert_pem
     "ca-key.pem"                  = var.private_key_pem
     "admin.pem"                   = tls_locally_signed_cert.kubernetes_admin_client.cert_pem
