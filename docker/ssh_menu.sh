@@ -13,7 +13,7 @@ ENV_ROOT="$1"
 STATE_FILE="${ENV_ROOT}/terraform.tfstate"
 
 # Get Docker server IP
-DOCKER_SERVER_IP=$(terraform output --state="$STATE_FILE" | grep docker_server_public_ip | cut -f 2 -d "=" | tr -d ' "')
+DOCKER_SERVER_IP=$(terraform output --state="${STATE_FILE}" -raw docker_server_public_ip)
 
 # Define SSH keys
 SSH_KEY_PATH_DOCKER="${ENV_ROOT}/files_from_terraform/docker_ssh_key"
@@ -89,6 +89,7 @@ elif [[ "$SELECTED_SERVER" == "kubectl" ]]; then
     ssh -t -i "$SSH_KEY_PATH_DOCKER" -o "StrictHostKeyChecking=no" ubuntu@"$SERVER_IP" "docker exec -it kubectl-container sh"
 
 else
-    ssh -i "$SSH_KEY_PATH_KUBERNETES" -o "StrictHostKeyChecking=no" ubuntu@"$SERVER_IP"
+    ssh -i "$SSH_KEY_PATH_KUBERNETES" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@"$SERVER_IP" \
+    -o ProxyCommand="ssh -W%h:%p -i ${SSH_KEY_PATH_DOCKER} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${DOCKER_SERVER_IP}"
 fi
 
