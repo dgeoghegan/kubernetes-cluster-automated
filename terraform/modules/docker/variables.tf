@@ -52,3 +52,8 @@ variable "vpc_id" {
   description = "ID of this cluster's VPC"
   default     = null
 }
+
+variable "k8s_files_hash" {
+  description = "Hash of all cluster config files"
+  default     = null
+}

@@ -85,6 +85,29 @@ resource "aws_security_group" "docker_security_group" {
   }
 }
 
+### SYNC CONFIGS FROM STORAGE
+resource "null_resource" "sync_ansible_files_s3" {
+  count = var.cloud_type == "aws" ? 1 : 0
+  triggers = {
+    hash    = var.k8s_files_hash
+    server  = aws_instance.docker_server[0].id
+  }
+
+  connection {
+    host        = aws_instance.docker_server[0].public_ip
+    user        = "ubuntu"
+    private_key = tls_private_key.docker_ssh_key.private_key_pem
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "aws s3 sync s3://${var.storage_name}/ /ansible/",
+      "chmod 600 /ansible/common/kubernetes_ssh_key"
+      ]
+  }
+}
+
+
 ### OUTPUT LOCATION FOR DOCKER FILES ####
 #variable "docker_file_path_override" {
 #  type = string
