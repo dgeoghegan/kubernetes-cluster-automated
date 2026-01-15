@@ -113,13 +113,13 @@
       group: root
       mode: '0600'
     loop:
-    - "/ansible/files_from_terraform/ca.pem"
-    - "/ansible/files_from_terraform/kubernetes-key.pem"
-    - "/ansible/files_from_terraform/kubernetes.pem"
+    - "/ansible/common/ca.pem"
+    - "/ansible/common/kubernetes-key.pem"
+    - "/ansible/common/kubernetes.pem"
 
   - name: Copy etcd.service to each controller
     copy:
-      src: "/ansible/files_from_terraform/etcd.service{{ inventory_hostname }}"
+      src: "/ansible/controller/{{ inventory_hostname }}/etcd_service"
       dest: "/etc/systemd/system/etcd.service"
       owner: root
       group: root
