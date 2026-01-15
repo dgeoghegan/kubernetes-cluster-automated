@@ -1,0 +1,12 @@
+# This doesn't run any task, just gives a desciptive name to the playbooks that follow
+- name : Install and configure Kubernetes cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks: []
+
+- import_playbook: install_etcd.yaml
+- import_playbook: kubernetes_control_plane_install.yaml
+- import_playbook: kubernetes_control_plane_configure.yaml
+- import_playbook: kubernetes_workers_install.yaml
+- import_playbook: kubernetes_workers_configure.yaml

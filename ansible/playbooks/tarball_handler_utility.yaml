@@ -1,0 +1,98 @@
+- name: Download checksum file
+  ansible.builtin.uri:
+    url: "{{ item.sha_template | replace('VAR_VERSION', item.version) }}"
+    return_content: yes
+  register: sha_out
+
+- name: Extract checksum from file
+  ansible.builtin.set_fact:
+    expected_sha256: >-
+      {{ 
+        (
+          sha_out.content.splitlines()
+          | select("search", item.url_template | replace('VAR_VERSION', item.version) | basename)
+          | map('regex_search', '([a-fA-F0-9]{64})')
+          | list
+          | first 
+        )
+        if sha_out.content is search(item.url_template | replace('VAR_VERSION', item.version) | basename)
+        else (sha_out.content | regex_search('([a-fA-F0-9]{64})'))
+      }}
+
+- name: Resolve URL and filenames
+  ansible.builtin.set_fact:
+    resolved_url: "{{ item.url_template | replace('VAR_VERSION', item.version) }}"
+    downloaded_filename: "{{ (item.url_template | replace('VAR_VERSION', item.version)) | basename }}"
+    download_path: "/tmp/{{ (item.url_template | replace('VAR_VERSION', item.version)) | basename }}"
+    extract_path: "/tmp/{{ item.name }}" 
+    final_dest: "{{ item.dest_dir }}/{{ item.dest_bin | default('') }}"
+    is_archive: "{{ item.content_type in ['archive-single', 'archive-multiple'] }}"
+    is_multiple: "{{ item.content_type == 'archive-multiple' }}"
+    is_single_file: "{{ item.content_type == 'single' }}"
+
+- name: Download file if checksum differs
+  ansible.builtin.get_url: 
+    url: "{{ resolved_url }}"
+    dest: "{{ download_path }}"
+    checksum: "sha256:{{ expected_sha256 }}"
+    force: no
+
+- name: Ensure extract destination exists
+  ansible.builtin.file:
+    path: "{{ extract_path }}"
+    state: directory
+    mode: "0755"
+  when: is_archive
+
+- name: Extract archive if not already extracted
+  ansible.builtin.unarchive:
+    src: "{{ download_path }}"
+    dest: "{{ extract_path }}"
+    remote_src: yes
+  when: is_archive
+
+- name: Copy single binary to final destination
+  ansible.builtin.copy:
+    src: >-
+      {{
+        extract_path + '/' + item.subdir + '/' + item.dest_bin
+        if is_archive and item.subdir is defined
+        else extract_path + '/' + item.dest_bin
+        if is_archive
+        else download_path
+      }}
+    dest: "{{ final_dest }}"
+    remote_src: yes
+    mode: "0755"
+  when: not is_multiple
+
+- name: Ensure installation destination exists
+  ansible.builtin.file:
+    path: "{{ item.dest_dir }}"
+    state: directory
+    mode: "0755"
+  when: is_archive
+
+- name: Find all extracted binaries
+  ansible.builtin.find:
+    paths: >-
+      {{
+        extract_path + '/' + item.subdir
+        if item.subdir is defined
+        else extract_path
+      }}
+    file_type: file
+  register: archive_files
+  when: is_multiple
+
+
+- name: Install all binaries from archive
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ final_dest | dirname }}/{{ item.path | basename }}"
+    mode: "0755"
+    remote_src: yes
+  loop: "{{ archive_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: is_multiple

@@ -1,0 +1,107 @@
+- name: Install Kubernetes Worker Components
+  hosts: kubernetes_workers
+  become: yes
+  vars:
+    tarballs:
+      - name: crictl
+        version: "v1.34.0"
+        url_template: "https://github.com/kubernetes-sigs/cri-tools/releases/download/VAR_VERSION/crictl-VAR_VERSION-linux-amd64.tar.gz"
+        sha_template: "https://github.com/kubernetes-sigs/cri-tools/releases/download/VAR_VERSION/crictl-VAR_VERSION-linux-amd64.tar.gz.sha256"
+        dest_dir: "/usr/local/bin/"
+        dest_bin: "crictl"
+        content_type: "archive-single"
+      - name: runc
+        version: "v1.3.3"
+        url_template: "https://github.com/opencontainers/runc/releases/download/VAR_VERSION/runc.amd64"
+        sha_template: "https://github.com/opencontainers/runc/releases/download/VAR_VERSION/runc.sha256sum"
+        dest_dir: "/usr/local/bin/"
+        dest_bin: "runc"
+        content_type: "single"
+      - name: cni-plugins
+        version: "v1.1.1"
+        url_template: "https://github.com/containernetworking/plugins/releases/download/VAR_VERSION/cni-plugins-linux-amd64-VAR_VERSION.tgz"
+        sha_template: "https://github.com/containernetworking/plugins/releases/download/VAR_VERSION/cni-plugins-linux-amd64-VAR_VERSION.tgz.sha256"
+        dest_dir: "/opt/cni/bin"
+        content_type: "archive-multiple"
+      - name: containerd
+        version: "2.2.0"
+        url_template: "https://github.com/containerd/containerd/releases/download/vVAR_VERSION/containerd-VAR_VERSION-linux-amd64.tar.gz"
+        sha_template: "https://github.com/containerd/containerd/releases/download/vVAR_VERSION/containerd-VAR_VERSION-linux-amd64.tar.gz.sha256sum"
+        dest_dir: "/usr/local/bin"
+        dest_bin: "containerd"
+        content_type: "archive-multiple"
+        subdir: "bin"
+      - name: kubectl
+        version: "v{{ kubernetes_version }}"
+        url_template: "https://dl.k8s.io/release/VAR_VERSION/bin/linux/amd64/kubectl"
+        sha_template: "https://dl.k8s.io/release/VAR_VERSION/bin/linux/amd64/kubectl.sha256"
+        dest_dir: "/usr/local/bin/"
+        dest_bin: "kubectl"
+        content_type: "single"
+      - name: kube-proxy
+        version: "v{{ kubernetes_version }}"
+        url_template: "https://dl.k8s.io/release/VAR_VERSION/bin/linux/amd64/kube-proxy"
+        sha_template: "https://dl.k8s.io/release/VAR_VERSION/bin/linux/amd64/kube-proxy.sha256"
+        dest_dir: "/usr/local/bin/"
+        dest_bin: "kube-proxy"
+        content_type: "single"
+      - name: kubelet
+        version: "v{{ kubernetes_version }}"
+        url_template: "https://dl.k8s.io/release/VAR_VERSION/bin/linux/amd64/kubelet"
+        sha_template: "https://dl.k8s.io/release/VAR_VERSION/bin/linux/amd64/kubelet.sha256"
+        dest_dir: "/usr/local/bin/"
+        dest_bin: "kubelet"
+        content_type: "single"
+
+  tasks:
+    - name: Disable swap for current session
+      ansible.builtin.command: swapoff -a
+    - name: Install OS dependencies
+      ansible.builtin.package:
+        name:
+          - socat
+          - conntrack
+          - ipset
+        state: latest
+
+    - name: Process tarballs
+      include_tasks: tarball_handler_utility.yaml
+      loop: "{{ tarballs }}"
+      loop_control:
+          loop_var: item
+
+    - name: Create directory for CNI configs
+      file:
+        path: "/etc/cni/net.d"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /var/lib/kubernetes
+      file:
+        path: "/var/lib/kubernetes"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /var/lib/kubelet
+      file:
+        path: "/var/lib/kubelet"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /var/lib/kube-proxy
+      file:
+        path: "/var/lib/kube-proxy"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /var/run/kubernetes
+      file:
+        path: "/var/run/kubernetes"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory /etc/containerd
+      file:
+        path: "/etc/containerd"
+        state: directory
+        mode: '0700'

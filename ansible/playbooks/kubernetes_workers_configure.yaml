@@ -1,0 +1,161 @@
+- name: Configure Kubernetes Worker Components
+  hosts: kubernetes_workers
+  become: yes
+  tasks:
+    - name: Copy correct cert and key to each worker
+      ansible.builtin.copy:
+        src: "/ansible/configs/worker/{{ inventory_hostname }}/{{ item }}"
+        dest: "/var/lib/kubelet/"
+        owner: root
+        group: root
+        mode: '0600'
+      loop:
+      - "cert.pem"
+      - "key.pem"
+
+    - name: Copy ca.pem to each worker
+      copy:
+        src: "/ansible/common/ca.pem"
+        dest: "/var/lib/kubernetes/"
+        owner: root
+        group: root
+        mode: '0644'
+        
+    - name: Write 99-loopback.conf
+      ansible.builtin.copy:
+        src: "/ansible/static_configs/99-loopback.conf"
+        dest: "/etc/cni/net.d/99-loopback.conf"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copy correct 10-bridge.conf to each worker
+      copy:
+        src: "/ansible/configs/worker/{{ inventory_hostname }}/10-bridge.conf"
+        dest: "/etc/cni/net.d/10-bridge.conf"
+        owner: root
+        group: root
+        mode: '0644'
+        
+    - name: Write containerd config
+      ansible.builtin.copy:
+        dest: "/ansible/static_files/containerd-config.toml"
+        dest: "/etc/containerd/config.toml"
+        content: |
+        owner: root
+        group: root
+        mode: '0644'
+      register: containerd_config_change
+        
+    - name: Write containerd.service
+      ansible.builtin.copy:
+        src: "/ansible/static_configs/containerd.service"
+        dest: "/etc/systemd/system/containerd.service"
+        owner: root
+        group: root
+        mode: '0644'
+      register: containerd_service_change
+
+    - name: Reload systemd and restart containerd.service if configs updated
+      systemd:
+        name: containerd
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      when: containerd_service_change.changed or containerd_config_change.changed
+
+    - name: Write kubelet.service
+      ansible.builtin.copy:
+        src: "/ansible/configs/worker/{{ inventory_hostname }}/kubelet.service"
+        dest: "/etc/systemd/system/kubelet.service"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kubelet_service_change
+      
+    - name: Copy correct kubelet-config.yaml to each worker
+      copy:
+        src: "/ansible/configs/worker/{{ inventory_hostname }}/kubelet-config.yaml"
+        dest: "/var/lib/kubelet/"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kubelet_config_change
+      
+    - name: Copy correct kubeconfig to each worker
+      copy:
+        src: "/ansible/configs/worker/{{ inventory_hostname }}/kubeconfig"
+        dest: "/var/lib/kubelet/"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kubelet_kubeconfig_change
+
+    - name: Reload systemd and restart kubelet.service if configs updated
+      systemd:
+        name: kubelet
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      when: kubelet_service_change.changed or kubelet_config_change.changed or kubelet_kubeconfig_change.changed
+
+    - name: Write kube-proxy.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/kube-proxy.service"
+        content: |
+          [Unit]
+          Description=Kubernetes Kube Proxy
+          Documentation=https://github.com/kubernetes/kubernetes
+          
+          [Service]
+          ExecStart=/usr/local/bin/kube-proxy \
+            --config=/var/lib/kube-proxy/kube-proxy-config.yaml
+          Restart=on-failure
+          RestartSec=5
+          
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+      register: kube_proxy_service_change
+      
+    - name: Copy kube-proxy-config.yaml to each worker
+      copy:
+        src: "/ansible/common/kube-proxy-config.yaml"
+        dest: "/var/lib/kube-proxy/"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kube_proxy_config_change
+      
+    - name: Copy kube-proxy kubeconfig to each worker
+      copy:
+        src: "/ansible/common/kube_proxy_kubeconfig"
+        dest: "/var/lib/kube-proxy/kubeconfig"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kube_proxy_kubeconfig_change
+
+    - name: Reload systemd and restart kube-proxy.service if configs updated
+      systemd:
+        name: kube-proxy
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      when: kube_proxy_service_change.changed or kube_proxy_config_change.changed or kube_proxy_kubeconfig_change.changed
+
+    - name: Gather host info for each worker node
+      local_action:
+        module: slurp
+        src: "/ansible/common/workers.host"
+      register: worker_hosts_file
+
+    - name: Update /etc/hosts to include worker nodes
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item }}"
+        create: yes
+        state: present
+      loop: "{{ (worker_hosts_file.content | b64decode).splitlines() }}"

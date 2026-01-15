@@ -1,12 +1,16 @@
 - name: Install Kubernetes Control Plane Components
   hosts: kubernetes_controllers
   become: yes
-  vars:
-    kubernetes_version: "1.32.2"  # Kubernetes version to be used
   tasks:
     - name: Create directory for kubernetes installation
       file:
         path: "/etc/kubernetes"
+        state: directory
+        mode: '0700'
+
+    - name: Create directory for kubernetes config
+      file:
+        path: "/etc/kubernetes/config"
         state: directory
         mode: '0700'
 
