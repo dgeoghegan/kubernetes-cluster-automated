@@ -4,4 +4,6 @@ resource "aws_s3_object" "stored_files" {
   bucket   = aws_s3_bucket.storage[0].id
   key      = each.key
   content  = each.value
+
+  etag = sha1(each.value)
 }
