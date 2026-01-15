@@ -49,5 +49,21 @@ variable "cluster_index" {
 variable "aws_credentials_file" {
   description = "Path to an AWS credentials file"
   type        = string
-  default     = "./aws_credentials.ini"
 }
+
+variable "pod_cidr" {
+  description = "IP range for pods in this cluster"
+  type        = string
+  default     = "172.16.0.0/18"
+}
+variable "kubernetes_version" {
+  type        = string
+  description = "Unused in infrastructure; passed through env.tfvars"
+  default     = null
+}
+variable "coredns_version" {
+  type          = string
+  description = "Unused in infrastructure; passed through env.tfvars"
+  default     = null
+}
+    
