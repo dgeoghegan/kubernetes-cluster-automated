@@ -96,7 +96,7 @@ resource "aws_security_group" "docker_security_group" {
 resource "null_resource" "sync_ansible_files_s3" {
   count = var.cloud_type == "aws" ? 1 : 0
   triggers = {
-    hash    = var.k8s_files_hash
+    hash    = nonsensitive(var.k8s_files_hash)
     server  = aws_instance.docker_server[0].id
   }
 
@@ -107,10 +107,15 @@ resource "null_resource" "sync_ansible_files_s3" {
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "aws s3 sync s3://${var.storage_name}/ /ansible/",
-      "chmod 600 /ansible/common/kubernetes_ssh_key"
-      ]
+    inline = [<<-BASH
+bash -lc 'set -euxo pipefail
+command -v cloud-init >/dev/null 2>&1 && sudo cloud-init status --wait || true
+until command -v aws >/dev/null 2>&1; do sleep 2; done
+sudo mkdir -p /ansible
+sudo aws s3 sync s3://${var.storage_name}/ /ansible/
+if [ -f /ansible/common/kubernetes_ssh_key ]; then sudo chmod 600 /ansible/common/kubernetes_ssh_key; fi'
+BASH
+    ]
   }
 }
 
