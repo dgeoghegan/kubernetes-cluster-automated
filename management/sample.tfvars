@@ -9,11 +9,11 @@ cluster_index   = 0
 controller_max  = 3
 worker_max      = 3
 ha_enabled      = true
-backend_type    = s3
+backend_type    = "s3"
 
 # AWS-specific settings
 instance_type         = "t3.micro"
-aws_credentials_file  = "aws_dev.ini"
+aws_credentials_file  = "aws_creds.ini"
 
 kubernetes_version = "1.34.2"
 coredns_version    = "1.31.1"
