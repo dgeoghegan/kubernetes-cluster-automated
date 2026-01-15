@@ -31,3 +31,11 @@ output "subnet" {
 output "vpc_id" {
   value = aws_vpc.vpc[0].id
 }
+
+output "controller_target_group_arn" {
+  value = aws_lb_target_group.lb_target_group[0].arn
+}
+
+output "route_table_id" {
+  value = aws_route_table.route_table[0].id
+}

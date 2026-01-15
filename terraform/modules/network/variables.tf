@@ -22,6 +22,12 @@ variable "service_cidr" {
   default     = "172.16.0.0/16"
 }
 
+variable "pod_cidr" {
+  description = "IP range for all pods in this cluster"
+  type        = string
+  default     = "172.16.0.0/18"
+}
+
 variable "region" {
   description = "The cloud region where the infrastructure is deployed."
   type        = string

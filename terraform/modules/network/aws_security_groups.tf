@@ -16,10 +16,10 @@ resource "aws_vpc_security_group_ingress_rule" "all_from_cluster" {
   ip_protocol       = -1 
 }
 
-resource "aws_vpc_security_group_ingress_rule" "all_from_service" {
+resource "aws_vpc_security_group_ingress_rule" "all_from_pod_cluster" {
   count             = var.cloud_type == "aws" ? 1 : 0
   security_group_id = aws_security_group.sg[0].id
-  cidr_ipv4         = var.service_cidr
+  cidr_ipv4         = var.pod_cidr
   ip_protocol       = -1 
 }
 
@@ -47,6 +47,15 @@ resource "aws_vpc_security_group_ingress_rule" "k8s_api_from_anywhere" {
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 6443
   to_port           = 6443
+  ip_protocol       = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "k8s_etcd_from_anywhere" {
+  count             = var.cloud_type == "aws" ? 1 : 0
+  security_group_id = aws_security_group.sg[0].id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 2379
+  to_port           = 2379
   ip_protocol       = "tcp"
 }
 

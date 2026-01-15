@@ -69,10 +69,6 @@ resource "aws_internet_gateway" "internet_gateway" {
 resource "aws_route_table" "route_table" {
   count = var.cloud_type == "aws" ? 1 : 0
   vpc_id            = aws_vpc.vpc[0].id
-  route {
-    cidr_block  = "0.0.0.0/0"
-    gateway_id  = aws_internet_gateway.internet_gateway[0].id
-  }
 
   tags = {
     Name = "${var.network_name}-cluster-${var.cluster_index}"
@@ -83,4 +79,10 @@ resource "aws_route_table_association" "route_table_association" {
   count           = var.cloud_type == "aws" ? length(aws_subnet.subnet) : 0
   subnet_id       = aws_subnet.subnet[count.index].id
   route_table_id  = aws_route_table.route_table[0].id
+}
+
+resource "aws_route" "default_route" {
+  route_table_id          = aws_route_table.route_table[0].id
+  destination_cidr_block  = "0.0.0.0/0"
+  gateway_id              = aws_internet_gateway.internet_gateway[0].id
 }
