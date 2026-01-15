@@ -52,7 +52,7 @@ resource "aws_instance" "kubernetes_worker" {
   ]
   instance_type               = var.instance_type
   private_ip                  = cidrhost(var.subnet[count.index % length(var.subnet)].cidr_block, 200 + count.index)
-  user_data                   = "name=cluster-${var.cluster_index}-worker-${count.index}|pod-cidr=${cidrsubnet(var.pod_cidr_cluster, 6, count.index)}"
+  user_data                   = "name=cluster-${var.cluster_index}-worker-${count.index}|pod-cidr=${cidrsubnet(var.pod_cidr, 6, count.index)}"
   subnet_id                   = var.subnet[count.index % length(var.subnet)].id
   ebs_block_device {
     device_name = "/dev/sda1"

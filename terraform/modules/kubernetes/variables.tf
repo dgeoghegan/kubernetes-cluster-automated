@@ -12,7 +12,7 @@ variable "load_balancer_dns_name" {
 variable "load_balancer_listener_port" {
   description = "Port number of load balancer listener"
   type        = number
-  default     = 443
+  default     = 6443
 }
 
 variable "cluster_index" {
@@ -77,12 +77,11 @@ variable "service_cidr" {
   default     = "192.168.0.0/22"
 }
 
-variable "pod_cidr_cluster" {
-  description = "IP range for all pod_cidr in this cluster"
+variable "pod_cidr" {
+  description = "IP range for all pods in this cluster"
   type        = string
   default     = "172.16.0.0/18"
 }
-
 
 variable "subnet" {
   description = "List of subnets in VPC"
@@ -90,4 +89,8 @@ variable "subnet" {
 
 variable "security_group_id" {
   description = "List of security groups in cluster"
+}
+
+variable "route_table_id" {
+  description = "network_id of the route table"
 }

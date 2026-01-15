@@ -48,7 +48,7 @@ resource "tls_cert_request" "kubernetes_kubelet_client" {
   private_key_pem   = tls_private_key.kubernetes_kubelet_client[count.index].private_key_pem
 
   subject {
-    common_name         = "system:nodes:${local.kubernetes_worker_private_dns[count.index]}"
+    common_name         = "system:node:${aws_instance.kubernetes_worker[count.index].tags["Name"]}"
     country             = "US"
     locality            = "Boston"
     organization        = "system:nodes"
@@ -58,12 +58,14 @@ resource "tls_cert_request" "kubernetes_kubelet_client" {
 
   dns_names = [
   local.kubernetes_worker_private_dns[count.index],
+  local.kubernetes_worker_network_info[count.index].name
   ]
 
   ip_addresses = [
   local.kubernetes_worker_private_ip[count.index],
   local.kubernetes_worker_public_ip[count.index],
   ]
+
 }
 
 resource "tls_locally_signed_cert" "kubernetes_kubelet_client" {
@@ -76,6 +78,7 @@ resource "tls_locally_signed_cert" "kubernetes_kubelet_client" {
 
   allowed_uses = [
     "client_auth",
+    "server_auth"
     ]
 }
 
@@ -220,11 +223,12 @@ resource "tls_cert_request" "kubernetes_api_server" {
     "kubernetes.default.svc",
     "kubernetes.default.svc.cluster",
     "kubernetes.svc.cluster.local",
-    var.load_balancer_dns_name
+    var.load_balancer_dns_name,
   ]
   ip_addresses = flatten([
     ["127.0.0.1"],
-    [for controller in local.kubernetes_controller_network_info : controller.private_ip]
+    [for controller in local.kubernetes_controller_network_info : controller.private_ip],
+    ["${cidrhost(var.service_cidr, 1)}"]
   ])
 }
 
