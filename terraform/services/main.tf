@@ -72,17 +72,3 @@ module "kubectl_runner" {
   service_cidr            = local.service_cidr
   docker_ssh_key_path     = local.docker_ssh_key_path_abs
 }
-
-module "helm_runner" {
-  source                  = "../../../../terraform/modules/helm_runner/"
-  helm_dockerfile_path    = var.helm_dockerfile_path
-  registry_address        = local.registry_address
-  registry_pass           = random_password.registry_pass.result
-  docker_server_public_ip = local.docker_server_public_ip
-  depends_on              = [ module.registry.registry_ready,
-                              module.kubectl_runner.manifests_applied ]
-  charts_dir              = local.charts_dir_abs
-  helm_version            = var.helm_version
-  coredns_version         = var.coredns_version
-  docker_ssh_key_path     = local.docker_ssh_key_path_abs
-}
