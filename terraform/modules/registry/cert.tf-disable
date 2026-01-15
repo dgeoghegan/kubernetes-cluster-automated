@@ -1,0 +1,69 @@
+resource "tls_private_key" "registry_tls_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_cert_request" "registry_tls_csr" {
+  private_key_pem   = tls_private_key.registry_tls_key.private_key_pem
+
+  subject {
+    common_name   = "registry-${var.network_name}"
+    organization  = var.network_name
+  }
+
+  dns_names       = ["localhost"]
+  ip_addresses    = [var.docker_server_public_ip, "127.0.0.1"]
+}
+
+resource "tls_locally_signed_cert" "registry_tls_cert" {
+  cert_request_pem      = tls_cert_request.registry_tls_csr.cert_request_pem
+  ca_private_key_pem    = var.ca_key_pem
+  ca_cert_pem           = var.ca_cert_pem
+  validity_period_hours = 24 * 365
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+resource "docker_volume" "registry_tls" {
+  name  = "registry_tls"
+}
+
+# write tls.cert and tls.key in the volume
+resource "docker_container" "make_tls" {
+  name        = "make-tls"
+  image       = docker_image.alpine.image_id
+  must_run    = false
+  restart     = "no"
+
+  volumes {
+    volume_name       = docker_volume.registry_tls.name
+    container_path    = "/out"
+  }
+
+  entrypoint  = ["/bin/sh", "-c"]
+  command     = [
+    "umask 077 && ",       # secure perms
+    "printf '%s' \"$TLS_CERT\" > /out/tls.crt && ",
+    "printf '%s' \"$TLS_KEY\" > /out/tls.key"
+  ]
+
+  env = [
+    "TLS_CERT=${tls_locally_signed_cert.registry_tls_cert.cert_pem}",
+    "TLS_KEY=${tls_private_key.registry_tls_key.private_key_pem}",
+  ]
+
+  depends_on = [
+    tls_locally_signed_cert.registry_tls_cert,
+    tls_private_key.registry_tls_key,
+  ]
+}
+
+resource "docker_image" "alpine" { name = "alpine:3.20" }
+
+# Trust the CA on the Docker daemon
+
+locals {
+  docker_certdir = "/etc/docker/certs.d/${var.docker_server_public_ip
