@@ -97,15 +97,19 @@ resource "null_resource" "run_playbooks" {
 
   provisioner "remote-exec" {
     inline = [ <<-EOT
-      set -x
-      export INVENTORY_FILE=/ansible/ansible/inventory.ini
-      export PLAYBOOK=/ansible/playbooks/site.yaml
-      docker login ${var.registry_address} -u admin -p '${var.registry_pass}'
-      docker run --rm \
-        -v /ansible:/ansible \
-        ${local.ansible_image_remote} ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK" \
-        --extra-vars "kubernetes_version=${var.kubernetes_version}" \
-        | tee /tmp/ansible_last_run.log
+      bash -lc '
+        set -euo pipefail
+        set -x
+        export INVENTORY_FILE=/ansible/ansible/inventory.ini
+        export PLAYBOOK=/ansible/playbooks/site.yaml
+        docker login ${var.registry_address} -u admin -p '${var.registry_pass}'
+        docker pull ${local.ansible_image_remote}
+        docker run --rm \
+          -v /ansible:/ansible \
+          ${local.ansible_image_remote} ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK" \
+          --extra-vars "kubernetes_version=${var.kubernetes_version}" \
+          2>&1 | tee /tmp/ansible_last_run.log
+      '
     EOT
     ]
 
