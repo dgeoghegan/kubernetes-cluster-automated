@@ -1,23 +1,33 @@
 #!/bin/bash
+set -euo pipefail
 
 # Require the environment root path as an argument
 if [[ -z "$1" ]]; then
-    echo "❌ Error: You must pass the path to the environment root (e.g. envs/tier/cluster)"
+    echo "❌ Error: You must pass the path to the environment infrastructure dir"
     exit 1
 fi
+
+if [[ -z "$2" ]]; then
+    echo "❌ Error: You must pass the path to the environment infrastructure workdir"
+    exit 1
+fi
+
+
+INFRA_DIR="${1:?infra runtime dir required}"
+INFRA_WORKDIR="${2:?infra terraform workdir required}"
 
 ENV_ROOT="$1"
 
 
 # Paths based on env root
-STATE_FILE="${ENV_ROOT}/terraform.tfstate"
+STATE_FILE="${INFRA_WORKDIR}/terraform.tfstate"
 
 # Get Docker server IP
 DOCKER_SERVER_IP=$(terraform output --state="${STATE_FILE}" -raw docker_server_public_ip)
 
 # Define SSH keys
-SSH_KEY_PATH_DOCKER="${ENV_ROOT}/files_from_terraform/docker_ssh_key"
-SSH_KEY_PATH_KUBERNETES="${ENV_ROOT}/files_from_terraform/kubernetes_ssh_key"
+SSH_KEY_PATH_DOCKER="${INFRA_WORKDIR}/files_from_terraform/docker_ssh_key"
+SSH_KEY_PATH_KUBERNETES="${INFRA_WORKDIR}/files_from_terraform/kubernetes_ssh_key"
 
 # Ensure Terraform extracted a valid IP
 if [[ -z "$DOCKER_SERVER_IP" ]]; then
@@ -26,7 +36,7 @@ if [[ -z "$DOCKER_SERVER_IP" ]]; then
 fi
 
 # Read inventory file for workers & controllers
-INVENTORY_FILE="${ENV_ROOT}/files_from_terraform/inventory.ini"
+INVENTORY_FILE="${INFRA_WORKDIR}/files_from_terraform/inventory.ini"
 
 declare -A SERVERS
 declare -A MENU_OPTIONS
