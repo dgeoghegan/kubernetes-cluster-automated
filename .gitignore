@@ -53,3 +53,5 @@ terraform.rc
 
 **/files_from_terraform/*
 **/logs/*
+
+*swp
