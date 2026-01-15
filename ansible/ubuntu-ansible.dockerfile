@@ -7,6 +7,7 @@ RUN set -eux; \
     python3 \
     python3-venv \
     python3-pip \
+    openssh-client \
     sshpass \
     bash \
     ca-certificates; \
