@@ -119,7 +119,7 @@
 
   - name: Copy etcd.service to each controller
     copy:
-      src: "/ansible/controller/{{ inventory_hostname }}/etcd_service"
+      src: "/ansible/configs/controller/{{ inventory_hostname }}/etcd_service"
       dest: "/etc/systemd/system/etcd.service"
       owner: root
       group: root
