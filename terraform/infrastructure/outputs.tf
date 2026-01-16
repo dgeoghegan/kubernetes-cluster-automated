@@ -15,3 +15,7 @@ output "cert_pem" {
 output "service_cidr" {
   value = local.service_cidr
 }
+
+output "load_balancer_dns_name" {
+  value = module.network.load_balancer_dns_name
+}

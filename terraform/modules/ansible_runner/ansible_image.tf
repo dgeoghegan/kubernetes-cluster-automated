@@ -4,13 +4,6 @@ locals {
 
   # Hash the Dockerfile to know when to build a new version
   ansible_dockerfile_hash = filesha1(var.ansible_dockerfile_path)
-
-  # Tag image using hash
-#  ansible_image_tag       = "ansible:${substr(local.ansible_dockerfile_hash, 0, 12)}"
-
-#  ansible_image_remote_name             = "127.0.0.1:5000/${local.ansible_image_tag}"
-#  ansible_image_remote_name             = local.ansible_image_tag
-
   ansible_repo          = "ansible-runner"
   ansible_tag           = "latest"
   ansible_image_local   = "${local.ansible_repo}:${local.ansible_tag}"
@@ -40,27 +33,25 @@ resource "docker_tag" "ansible_runner_remote" {
   target_image  = local.ansible_image_remote
 }
 
-#resource "docker_registry_image" "ansible_runner" {
-#  name          = local.ansible_image_local
-#  name          = docker_tag.ansible_runner_remote.target_image
-#  depends_on    = [docker_image.ansible_runner, docker_tag.ansible_runner_remote]
-#  depends_on    = [docker_image.ansible_runner]
-#  keep_remotely = false
-#
-#}
-
-# Using null_resource instead of docker_registry_image to keep everything local on docker server
-# docker_registry_image would require the registry to be accessible from my Terraform workstation
-
 resource "null_resource" "push_ansible_runner" {
   triggers = {
     image_id = docker_image.ansible_runner.image_id  # re-push on rebuild
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "docker login ${var.registry_address} -u admin -p '${var.registry_pass}'",
-      "docker push ${local.ansible_image_remote}"
+    inline = [ <<-EOT
+      bash -lc '
+        set -euo pipefail
+        set -x
+
+        { set +x; } 2>/dev/null
+        printf "%s" "${var.registry_pass}" | \
+          docker login ${var.registry_address} -u admin --password-stdin
+        { set -x; } 2>/dev/null
+
+        docker push ${local.ansible_image_remote}
+      '
+    EOT
     ]
     connection {
       type        = "ssh"

@@ -32,9 +32,13 @@ resource "null_resource" "sync_manifests" {
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "mkdir -p /ansible/manifests",
-      "echo \"${var.registry_pass}\" > ~/reg_pass"
+    inline = [ <<-EOT
+      bash -lc '
+        set -euo pipefail
+        set -x
+        mkdir -p /ansible/manifests
+      '
+    EOT
     ]
 
     connection {
@@ -47,12 +51,41 @@ resource "null_resource" "sync_manifests" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -i ${local.docker_ssh_key_path}" \
+      rsync -az --delete \
+        -e "ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i ${local.docker_ssh_key_path}" \
         "${var.manifests_dir}/" \
         "ubuntu@${var.docker_server_public_ip}:/ansible/manifests/"
     EOT
   }
 }
+
+resource "null_resource" "wait_for_apiserver" {
+  triggers = {
+    always_run = timestamp()
+  }
+
+  provisioner "remote-exec" {
+
+    inline = [
+      "set -e",
+      "url=https://${var.load_balancer_dns_name}:6443/healthz",
+      "i=1; while [ $i -le 60 ]; do curl -kfsS \"$url\" >/dev/null && echo apiserver-ready && exit 0; echo waiting... \"$i/60\"; i=$((i+1)); sleep 5; done; echo apiserver-not-ready >&2; exit 1",
+    ]
+  }
+
+  connection {
+    type        = "ssh"
+    user        = "ubuntu"
+    host        = var.docker_server_public_ip
+    private_key = file(local.docker_ssh_key_path)
+  }
+
+  depends_on = [
+    null_resource.sync_manifests
+  ]
+
+}
+
 
 resource "null_resource" "run_manifests" {
   triggers = {
@@ -60,27 +93,28 @@ resource "null_resource" "run_manifests" {
   }
 
   provisioner "remote-exec" {
-    inline = [ <<-EOT
-      # Authenticate to registry to pull kubectl image if needed
-      export CLUSTER_DNS=${cidrhost(var.service_cidr, 10)}
-      docker login ${var.registry_address} -u admin -p '${var.registry_pass}'
-      docker run --rm \
-        --entrypoint /bin/sh \
-        -e CLUSTER_DNS \
-        -v /ansible:/ansible \
-        ${local.kubectl_image_remote} \
-        -c "
-          for f in /ansible/manifests/*.y*ml; do
-            [ -f "$f" ] || continue
-            echo \"Applying $f\"
-            envsubst < \"\$f\" | \
-              kubectl \
-                --kubeconfig=/ansible/common/admin_kubeconfig \
-                apply --server-side --force-conflicts -f -
-          done
-        " >  /tmp/kubectl_last_run.log 2>&1
-    EOT
-    ]
+    inline = [
+      "set -e",
+      "export CLUSTER_DNS=${cidrhost(var.service_cidr, 10)}",
+      "printf '%s' '${var.registry_pass}' | docker login ${var.registry_address} -u admin --password-stdin",
+      "docker pull ${local.kubectl_image_remote}",
+      <<-EOC
+        docker run --rm --entrypoint /bin/sh \
+          -e CLUSTER_DNS \
+          -v /ansible:/ansible \
+          ${local.kubectl_image_remote} \
+          -c 'set -eu
+            for f in /ansible/manifests/*.y*ml; do
+              [ -f "$f" ] || continue
+              echo "Applying $f"
+              tmp="$(mktemp)"
+              envsubst < "$f" > "$tmp"
+              kubectl --kubeconfig=/ansible/common/admin_kubeconfig \
+                apply --server-side --force-conflicts -f "$tmp"
+              rm -f "$tmp"
+            done' 
+    EOC
+  ]
 
     connection {
       type        = "ssh"
@@ -92,6 +126,7 @@ resource "null_resource" "run_manifests" {
 
   depends_on = [
     null_resource.sync_manifests,
-    null_resource.push_kubectl_runner
+    null_resource.push_kubectl_runner,
+    null_resource.wait_for_apiserver
   ]
 }

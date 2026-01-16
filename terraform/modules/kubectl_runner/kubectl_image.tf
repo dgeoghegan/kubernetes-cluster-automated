@@ -53,12 +53,24 @@ resource "null_resource" "push_kubectl_runner" {
   }
 
   provisioner "remote-exec" {
-    inline = [
-    # First kill stale containers
-      "docker rm -f $(docker ps -aq --filter ancestor=${local.kubectl_image_remote}) || true",
-      "docker login ${var.registry_address} -u admin -p '${var.registry_pass}'",
-      "docker push ${local.kubectl_image_remote}"
+    inline = [ <<-EOT
+      bash -lc '
+        set -euo pipefail
+        set -x
+
+        ids="$(docker ps -aq --filter "ancestor=${local.kubectl_image_remote}")"
+        [ -n "$ids" ] && docker rm -f $ids || true
+
+        { set +x; } 2>/dev/null
+        printf "%s" "${var.registry_pass}" | \
+          docker login ${var.registry_address} -u admin --password-stdin
+        { set -x; } 2>/dev/null
+
+        docker push ${local.kubectl_image_remote} 2>&1 | tee /tmp/kubectl_push.log
+      '
+    EOT
     ]
+
     connection {
       type        = "ssh"
       user        = "ubuntu"

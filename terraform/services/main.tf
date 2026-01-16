@@ -7,6 +7,7 @@ locals {
   manifests_dir_abs       = abspath(var.manifests_dir)
   charts_dir_abs          = abspath(var.charts_dir)
   docker_ssh_key_path_abs = abspath(var.docker_ssh_key_path)
+  load_balancer_dns_name  = data.terraform_remote_state.infrastructure.outputs.load_balancer_dns_name
 }
 
 data "terraform_remote_state" "infrastructure" {
@@ -71,4 +72,5 @@ module "kubectl_runner" {
   kubernetes_version      = var.kubernetes_version
   service_cidr            = local.service_cidr
   docker_ssh_key_path     = local.docker_ssh_key_path_abs
+  load_balancer_dns_name  = local.load_balancer_dns_name
 }

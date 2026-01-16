@@ -40,9 +40,13 @@ resource "null_resource" "sync_playbooks" {
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "mkdir -p /ansible/playbooks",
-      "echo \"${var.registry_pass}\" > ~/reg_pass"
+    inline = [ <<-EOT
+      bash -lc '
+        set -euo pipefail
+        set -x
+        mkdir -p /ansible/playbooks
+      '
+    EOT
     ]
 
     connection {
@@ -68,9 +72,13 @@ resource "null_resource" "sync_static_configs" {
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "mkdir -p /ansible/static_configs",
-      "echo \"${var.registry_pass}\" > ~/reg_pass"
+    inline = [ <<-EOT
+      bash -lc '
+        set -euo pipefail
+        set -x
+        mkdir -p /ansible/static_configs
+      '
+    EOT
     ]
 
     connection {
@@ -100,13 +108,21 @@ resource "null_resource" "run_playbooks" {
       bash -lc '
         set -euo pipefail
         set -x
+
         export INVENTORY_FILE=/ansible/ansible/inventory.ini
         export PLAYBOOK=/ansible/playbooks/site.yaml
-        docker login ${var.registry_address} -u admin -p '${var.registry_pass}'
+
+        { set +x; } 2>/dev/null
+        printf "%s" "${var.registry_pass}" | \
+          docker login ${var.registry_address} -u admin --password-stdin
+        { set -x; } 2>/dev/null
+
         docker pull ${local.ansible_image_remote}
+
         docker run --rm \
           -v /ansible:/ansible \
-          ${local.ansible_image_remote} ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK" \
+          ${local.ansible_image_remote} \
+          ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK" \
           --extra-vars "kubernetes_version=${var.kubernetes_version}" \
           2>&1 | tee /tmp/ansible_last_run.log
       '
