@@ -5,8 +5,8 @@ locals {
   # Hash the Dockerfile to know when to build a new version
   ansible_dockerfile_hash = filesha1(var.ansible_dockerfile_path)
   ansible_repo          = "ansible-runner"
-  ansible_tag           = "latest"
-  ansible_image_local   = "${local.ansible_repo}:${local.ansible_tag}"
+  ansible_image_local   = "${local.ansible_repo}:build"
+  ansible_tag           = substr(docker_image.ansible_runner.image_id, 7, 12)
   ansible_image_remote  = "${var.registry_address}/${local.ansible_repo}:${local.ansible_tag}"
   docker_ssh_key_path   = var.docker_ssh_key_path
 }
@@ -17,8 +17,7 @@ resource "docker_image" "ansible_runner" {
   build {
     context     = local.ansible_build_context
     dockerfile  = var.ansible_dockerfile_path
-    tag         = [ local.ansible_image_local,
-                    local.ansible_image_remote ]
+    tag         = [ local.ansible_image_local ]
   }
 
   triggers = {
@@ -35,24 +34,33 @@ resource "docker_tag" "ansible_runner_remote" {
 
 resource "null_resource" "push_ansible_runner" {
   triggers = {
-    image_id = docker_image.ansible_runner.image_id  # re-push on rebuild
+    image_id = docker_image.ansible_runner.image_id
   }
 
   provisioner "remote-exec" {
-    inline = [ <<-EOT
-      bash -lc '
-        set -euo pipefail
-        set -x
+    inline = [
+      "set -e",
+      "set +x",
 
-        { set +x; } 2>/dev/null
-        printf "%s" "${var.registry_pass}" | \
-          docker login ${var.registry_address} -u admin --password-stdin
-        { set -x; } 2>/dev/null
+      "REGISTRY_ADDR=127.0.0.1:5000",
+      "REGISTRY_USER=admin",
+      "IMAGE='${local.ansible_image_remote}'",
 
-        docker push ${local.ansible_image_remote}
-      '
-    EOT
+      "tmp=$(mktemp)",
+      "trap 'rm -f \"$tmp\"' EXIT",
+
+      # Write the password literally. Quoted heredoc prevents $ expansion.
+      "cat > \"$tmp\" <<'EOF'\n${var.registry_pass}\nEOF",
+
+      # No pipe here, so /bin/sh captures errors correctly.
+      "docker login \"$REGISTRY_ADDR\" -u \"$REGISTRY_USER\" --password-stdin < \"$tmp\"",
+
+      "rm -f \"$tmp\"",
+      "trap - EXIT",
+
+      "docker push \"$IMAGE\" 2>&1 | tee /tmp/ansible_runner_push.log",
     ]
+
     connection {
       type        = "ssh"
       user        = "ubuntu"

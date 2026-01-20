@@ -49,26 +49,30 @@ resource "docker_tag" "kubectl_runner_remote" {
 
 resource "null_resource" "push_kubectl_runner" {
   triggers = {
-    image_id = docker_image.kubectl_runner.image_id  # re-push on rebuild
+    image_id = docker_image.kubectl_runner.image_id
   }
 
   provisioner "remote-exec" {
-    inline = [ <<-EOT
-      bash -lc '
-        set -euo pipefail
-        set -x
+    inline = [
+      "set -e",
+      "set +x",
 
-        ids="$(docker ps -aq --filter "ancestor=${local.kubectl_image_remote}")"
-        [ -n "$ids" ] && docker rm -f $ids || true
+      "REGISTRY_ADDR=127.0.0.1:5000",
+      "REGISTRY_USER=admin",
+      "IMAGE='${local.kubectl_image_remote}'",
 
-        { set +x; } 2>/dev/null
-        printf "%s" "${var.registry_pass}" | \
-          docker login ${var.registry_address} -u admin --password-stdin
-        { set -x; } 2>/dev/null
+      # Remove any existing containers based on the image (optional, but matches your prior intent)
+      "ids=$(docker ps -aq --filter \"ancestor=$IMAGE\" || true)",
+      "if [ -n \"$ids\" ]; then docker rm -f $ids; fi",
 
-        docker push ${local.kubectl_image_remote} 2>&1 | tee /tmp/kubectl_push.log
-      '
-    EOT
+      "tmp=$(mktemp)",
+      "trap 'rm -f \"$tmp\"' EXIT",
+      "cat > \"$tmp\" <<'EOF'\n${var.registry_pass}\nEOF",
+      "docker login \"$REGISTRY_ADDR\" -u \"$REGISTRY_USER\" --password-stdin < \"$tmp\"",
+      "rm -f \"$tmp\"",
+      "trap - EXIT",
+
+      "docker push \"$IMAGE\" 2>&1 | tee /tmp/kubectl_push.log",
     ]
 
     connection {
