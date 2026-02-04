@@ -1,4 +1,3 @@
-````markdown
 # SETUP_GUIDE.md
 
 ## 1. What this provisions
@@ -110,7 +109,3 @@ printf "10\nsample\n" | ./manage.sh
 ## 7. Known sharp edges
 
 * Readiness timing: first-time provisioning frequently encounters readiness races (SSH not yet available, cloud-init still running, Kubernetes components not yet ready). Failures typically occur during the services phase even when infrastructure provisioning has completed. The mitigation is to wait and re-run the same `Apply both` path; the system is designed to be safely re-runnable and converge.
-
-```
-```
-
