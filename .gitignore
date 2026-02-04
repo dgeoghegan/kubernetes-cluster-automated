@@ -62,3 +62,11 @@ terraform.rc
 # ignore environments dir
 environments/
 
+# Safety net: never commit key/cert artifacts
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+.kube/
+*kubeconfig*
