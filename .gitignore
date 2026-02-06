@@ -54,6 +54,8 @@ terraform.rc
 
 *credentials*.tf
 *credentials*.ini
+**/*_creds.ini
+**/*_credentials.ini
 
 **/files_from_terraform/*
 **/logs/*
