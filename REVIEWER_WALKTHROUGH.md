@@ -1,6 +1,6 @@
-# Reviewer Walkthrough (v1, No Diagrams)
+# Reviewer Walkthrough
 
-## 1. Goals for the Demo
+## 1. Goals for this Demo
 
 This project demonstrates the provisioning and operation of a Kubernetes control plane and worker nodes on AWS using only AWS primitives, without relying on managed Kubernetes services such as EKS.
 
