@@ -31,12 +31,12 @@ Absence:
 Cluster topology and addressing are determined dynamically based on minimal configurations (node count, AWS region) rather than being hard-coded.
 
 How to inspect:
-- Inspect [`terraform/modules/network/aws_vpc.tf`](terraform/modules/network/aws_vpc.tf) to see each subnet's AZ and CIDR determined based on the number of nodes and available AZs.
-- Inspect [`terraform/modules/kubernetes/aws_instances.tf`](terraform/modules/kubernetes/aws_instances.tf) to see that each node’s name, subnet, and private IP are derived values.
-- Inspect [`terraform/modules/kubernetes/config_contents.tf`](terraform/modules/kubernetes/config_contents.tf) to see that Ansible inventory contents are generated from derived values.
+- Inspect [`terraform/modules/network/aws_vpc.tf`](terraform/modules/network/aws_vpc.tf#L37-L58) to see each subnet's AZ and CIDR determined based on the number of nodes and available AZs.
+- Inspect [`terraform/modules/kubernetes/aws_instances.tf`](terraform/modules/kubernetes/aws_instances.tf#L27-L37) to see that each node’s name, subnet, and private IP are derived values.
+- Inspect [`terraform/modules/kubernetes/config_contents.tf`](terraform/modules/kubernetes/config_contents.tf#L2-L12) to see that Ansible inventory contents are generated from derived values.
 
 Absence:
-- From the repository root, execute `grep -RniE '\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|[12]?[0-9]))?\b' .` to confirm that only broad CIDR ranges appear (only to be dynamically subdivided) and no per-node static addressing is encoded.
+- From the repository root, execute `grep -RniE '\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|[12]?[0-9]))?\b' .` to confirm that only broad CIDR ranges appear (just to be dynamically subdivided later) and no per-node static addressing is encoded.
 
 ### Decision 3: Infrastructure provisioning is separated from ordered configuration
 
