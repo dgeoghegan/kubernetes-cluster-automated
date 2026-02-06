@@ -69,19 +69,8 @@ printf "4\n" | ./manage.sh
 # Or execute ./manage.sh and choose option 4
 ```
 
-Code paths involved:
-- management/manage.sh
-- management/*.tfvars
-- terraform/infrastructure/
-- terraform/services/
-- terraform/modules/ansible_runner/
-- terraform/modules/kubectl_runner/
-- kubectl/manifests/
-- environments/<env>/infra/root/
-- environments/<env>/services/root/
-
-Invariant:
-The system enforces environment-scoped Terraform state and execution directories regardless of how many times bring-up is run or by whom.
+Note:
+Terraform is executed only via [`management/manage.sh`](management/manage.sh#L287-L349), which selects an environment-scoped working directory and sets an explicit TF_DATA_DIR for that environment. THe script syncs configuration into a work directory specifically for that environment before invoking Terraform, ensuring state and execution context are isolated by environment.
 
 ### Teardown
 
