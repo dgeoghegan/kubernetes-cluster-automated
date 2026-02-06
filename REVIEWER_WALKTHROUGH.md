@@ -70,7 +70,7 @@ printf "4\n" | ./manage.sh
 ```
 
 Note:
-Terraform is executed only via [`management/manage.sh`](management/manage.sh#L287-L349), which selects an environment-scoped working directory and sets an explicit TF_DATA_DIR for that environment. THe script syncs configuration into a work directory specifically for that environment before invoking Terraform, ensuring state and execution context are isolated by environment.
+Terraform is executed only via [`management/manage.sh`](management/manage.sh#L287-L349), which selects an environment-scoped working directory and sets an explicit TF_DATA_DIR for that environment. The script syncs configuration into a work directory specifically for that environment before invoking Terraform, ensuring state and execution context are isolated by environment.
 
 ### Teardown
 
