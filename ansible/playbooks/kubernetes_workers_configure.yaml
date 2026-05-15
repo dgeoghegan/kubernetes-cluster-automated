@@ -39,9 +39,8 @@
         
     - name: Write containerd config
       ansible.builtin.copy:
-        dest: "/ansible/static_files/containerd-config.toml"
+        src: "/ansible/static_configs/containerd-config.toml"
         dest: "/etc/containerd/config.toml"
-        content: |
         owner: root
         group: root
         mode: '0644'
