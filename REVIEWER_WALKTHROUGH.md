@@ -1,102 +1,83 @@
-# Reviewer Walkthrough
+# Kubernetes Cluster Automation
 
-## 1. Goals for this Demo
+This project automates [Kubernetes The Hard Way (AWS)](https://github.com/prabhatsharma/kubernetes-the-hard-way-aws.git) using Terraform and Ansible.
 
-This project demonstrates the provisioning and operation of a Kubernetes control plane and worker nodes on AWS using only AWS primitives, without relying on managed Kubernetes services such as EKS.
+I built this after failing to get the manual tutorial working reliably. Kubernetes The Hard Way is a step-by-step walkthrough of manual cluster construction using sequential shell commands. The "truth" of the cluster is distributed across environment variables, local files, and node-level state generated at runtime. When my smoke tests failed, I had no clear way to see where things had diverged. Diagnosing meant SSHing across nodes, comparing generated files, and reconstructing the execution history. 
 
-## 2. Where the Kubernetes Cluster Lives
+My bigger motivation, though, was sheer frustration at a mostly manual process crying out to be automated. Also, I didn't like that cluster size was fixed and a "high availability" control plane was set in a single availability zone. 
 
-This cluster runs entirely inside a single AWS account, within a VPC spanning multiple availability zones. Kubernetes control-plane components run directly on EC2 instances provisioned by Terraform, alongside separate EC2 worker nodes. AWS provides only foundational primitives such as compute, networking, and IAM; Kubernetes itself, including control-plane services and node configuration, is owned and managed by the user rather than delegated to a managed service. All infrastructure lifecycle is expressed in Terraform, while ordered configuration, bootstrap, and recovery behavior is handled explicitly through Ansible and kubectl.
+I didn't set out with a clean architecture in mind. I was trying to make debugging tractable while iterating on a fragile bootstrap process. The structure that emerged reflects that operational pressure.
 
-Relevant code locations:
-- [`terraform/modules/kubernetes/aws_instances.tf`](terraform/modules/kubernetes/aws_instances.tf)
-- [`terraform/modules/network/aws_vpc.tf`](terraform/modules/network/aws_vpc.tf)
+---
 
-## 3. Design Decisions and Inspection Paths
+## How the System is Structured
 
-### Decision 1: Kubernetes runs directly on EC2 instances, not a managed service
+Automating this for HA and configurability meant doing more than scripting the manual steps in sequence. Node counts, subnet allocation, IP assignments, etcd peer topologies, and certificate SANs all need to be created dynamically. Instead of relying on values preselected by a tutorial author, correctly generating the configuration files now requires having a globally consistent map of the entire cluster's intended state.
 
-Kubernetes control-plane and worker nodes are provisioned as EC2 instances and configured explicitly rather than through a managed service.
+With Terraform resolving those dependencies up front, the system forces a clean break: The full configuration is rendered before bootstrap begins, stored as artifacts, and consumed by the execution layer.
 
-How to inspect:
-- Inspect [`terraform/modules/kubernetes/aws_instances.tf`](terraform/modules/kubernetes/aws_instances.tf) for EC2 instance resources designated as control-plane and worker nodes.
-- Inspect [`terraform/modules/network/aws_vpc.tf`](terraform/modules/network/aws_vpc.tf) for VPC, subnet, and routing resources used by the cluster nodes.
-- Inspect [`ansible/playbooks/`](ansible/playbooks/) for playbooks that install and configure Kubernetes control-plane and worker components on EC2.
+Five components carry distinct responsibilities:
 
-Absence:
-- From the repository root, run `grep -ri eks .` and verify that it produces zero matches for any EKS resources.
+- **Terraform:** Provisions the infrastructure and calculates the topology based on input. Handles the networking layout, spins up the EC2 instances, and pulls network attributes (IPs, DNS names) directly into its dependency graph so it can render the node certificates and systemd service units.
 
-### Decision 2: Cluster topology and addressing are derived dynamically
+- **S3:** Stores the rendered configuration artifacts produced by Terraform.
 
-Cluster topology and addressing are determined dynamically based on minimal configurations (node count, AWS region) rather than being hard-coded.
+- **Ansible:** Installs software components, distributes the configuration files, and starts services. It does not modify any configurations. 
 
-How to inspect:
-- Inspect [`terraform/modules/network/aws_vpc.tf`](terraform/modules/network/aws_vpc.tf#L37-L58) to see each subnet's AZ and CIDR determined based on the number of nodes and available AZs.
-- Inspect [`terraform/modules/kubernetes/aws_instances.tf`](terraform/modules/kubernetes/aws_instances.tf#L27-L37) to see that each node’s name, subnet, and private IP are derived values.
-- Inspect [`terraform/modules/kubernetes/config_contents.tf`](terraform/modules/kubernetes/config_contents.tf#L2-L12) to see that Ansible inventory contents are generated from derived values.
+- **Containerized runners:** Run Ansible and kubectl on a separate EC2 instance, providing a reproducible execution environment. The local workstation needs only git, Terraform, and AWS keys.
 
-Absence:
-- From the repository root, execute `grep -RniE '\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/(3[0-2]|[12]?[0-9]))?\b' .` to confirm that only broad CIDR ranges appear (just to be dynamically subdivided later) and no per-node static addressing is encoded.
+- **Bash management script:** Orchestrates the other tools and acts as the primary entry point. Sequences execution phases, manages environment isolation, logs output, and manages SSH access to nodes and runners. 
 
-### Decision 3: Infrastructure provisioning is separated from ordered configuration
+References: [Design Rationale](docs/design-rationale.md), [Artifact Schema](docs/artifact-schema.md)
 
-The system separates infrastructure provisioning from asset configuration by using Terraform for lifecycle ownership and Ansible for procedural bootstrap and recovery.
+---
 
-How to inspect:
-- Inspect [`terraform/infrastructure/main.tf`](terraform/infrastructure/main.tf) and [`terraform/modules`](terraform/modules) to see that Terraform resources are limited to infrastructure concerns.
-- Inspect [`ansible/playbooks/`](ansible/playbooks/) to see how Ansible installs and configures all Kubernetes components.
+## Topology Derivation
 
-Absence:
-- Execute `grep -RniE 'remote-exec|local-exec|cloud-init|/usr/local|/usr/bin/|/etc/|apt|user_data|install |apt |apt-|file\s*\{' terraform/`and confirm that those commands or keywords appear only for establishing infrastructure (Docker host's user_data), generating environment-specific configuration files (Kubernetes-related certificates), or invoking a runner for Ansible or kubectl.
+The original tutorial assumes a fixed number of servers in a single Availability Zone. Supporting HA and configurable cluster size required making topology derivation explicit.
 
-## 4. Lifecycle Evidence
+Given desired controller count, worker count, instance requirements, and HA mode, Terraform:
 
-### Bring-up
+- Queries which AZs support the requested instance types.
+- Distributes nodes across available zones.
+- Derives CIDR allocation, node naming, and etcd peer topology from the same model.
+- Rejects configurations that violate HA constraints (odd controller count ≥ 3) before any resources are created.
 
-Commands:
-```bash
-git clone https://github.com/dgeoghegan/kubernetes-cluster-automated
-cd kubernetes-cluster-automated
+---
 
-cp management/aws_creds.ini-template management/aws_creds.ini
-# Edit management/aws_creds.ini and set:
-# aws_access_key_id, aws_secret_access_key, region
+## What This Doesn't Solve
 
-chmod +x management/manage.sh
+The operational complexity of the manual bootstrap was formalized instead of being eliminated.
 
-cd management
-printf "4\n" | ./manage.sh
-# Or execute ./manage.sh and choose option 4
-```
+- Sequencing and timing between commands move from human wait time to readiness checks in the orchestration script and the Terraform modules.
+- The topology still needs to be fully mapped before configurations can include the correct settings, but now that mapping is dynamically derived instead of being predefined by the tutorial author and therefore cumbersome to reconfigure.
+- There is still no guarantee that the configurations work even if they're formed correctly. A kubeconfig referencing the wrong endpoint or a certificate missing a required SAN can pass Terraform validation then fail at runtime. Validating and testing the configuration semantics is now done in a codebase instead of by confirming a set of manual steps.
+- Tearing down and rebuilding a cluster is still delicate, but of course now the process is automated.
 
-Note:
-Terraform is executed only via [`management/manage.sh`](management/manage.sh#L287-L349), which selects an environment-scoped working directory and sets an explicit TF_DATA_DIR for that environment. The script syncs configuration into a work directory specifically for that environment before invoking Terraform, ensuring state and execution context are isolated by environment.
+The points of failure moved but they didn't disappear. The artifact layer makes the intended state inspectable earlier; it does not make it correct.
 
-### Teardown
+For a look at other problems either unsolved or introduced by this approach, see the [Failure Model](docs/failure-model.md).
 
-```bash
-cd "$(git rev-parse --show-toplevel)/management"
-printf "10\nsample\n" | ./manage.sh
-# Or execute ./manage.sh, choose option 10, and follow the prompts 
-```
+---
 
-## 5. Supported Entrypoints and Constraints
+## Tracking Down a Root Cause: etcd Quorum Formation
 
-Engineers install Terraform locally and do not install Ansible or kubectl. Terraform provisions a Docker host VM during bring-up, and Ansible and kubectl are executed inside containers on that host using images and entrypoints defined by the system.
+etcd is where bootstrap correctness depends on global consistency. A single mismatch in any of several configurations across all of the control-plane nodes prevents quorum formation, producing a silent failure mode where nodes wait indefinitely.
 
-The system does not depend on hidden workstation state such as user home directories, global kubeconfig files, or cached tool data. Terraform runs from explicit, environment-scoped directories under environments/, with Terraform state and initialization data isolated per environment. Ansible and kubectl configuration and outputs are generated and used inside system-managed directories and containers rather than on the engineer’s machine.
+In manual bootstrap workflows, this consistency is only verified at runtime. Failures require reconstructing state across multiple nodes via SSH.
 
-Note:
-Interactions with the system are operated through [`management/manage.sh`](management/manage.sh), which serves as the single entrypoint for environment selection and lifecycle actions. All actions are then executed by Terraform or by a containerized runner for Ansible or kubectl. 
+With the tools in this project, the full etcd topology and certificate configuration is rendered as part of the pre-execution artifact set. Inconsistencies are inspectable in a single place before bootstrap succeeds or fails.
 
-## 6. Explicit Non-Goals
+---
 
-This demo does not:
-- Implement a multi-region Kubernetes cluster or cross-region failover.
-- Include application workloads deployed onto the Kubernetes cluster.
-- Integrate with external CI/CD pipelines or platform-level orchestration services.
-- Provide a production-ready Kubernetes distribution or vendor-specific hardening.
-- Implement automated Kubernetes or operating system upgrade paths.
-- Address observability, alerting, or SRE-style operational monitoring.
-- Model scale, cost optimization, or performance tuning beyond functional correctness.
-- Cover day-2 operations beyond the explicit bring-up, change, and teardown paths demonstrated.
+## Verification
+
+The supporting documentation includes verification scripts you can run against the repository to confirm that the structural claims hold in the current codebase without spinning up a cluster.
+
+→ [Verification Walkthrough](docs/claim-verification.md)
+
+---
+
+## Getting Started
+
+If you do want to provision and interact with this system, though, refer to the [Setup Guide](SETUP_GUIDE.md).
